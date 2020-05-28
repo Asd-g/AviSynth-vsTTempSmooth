@@ -34,12 +34,12 @@ vsTTempSmooth(clip, int "ythresh", int "uthresh", int "vthresh", int "ymdiff", b
 - ymdiff\
     Any pixels with differences less than or equal to mdiff will be blurred at maximum. Usually, the larger the difference to the center pixel the smaller the weight in the average. mdiff makes TTempSmooth treat pixels that have a difference of less than or equal to mdiff as though they have a difference of 0. In other words, it shifts the zero difference point outwards. Set mdiff to a value equal to or greater than thresh-1 to completely disable inverse pixel difference weighting.\
     Applied only to the luma plane.\
-    Must be between 0 and 255.
+    Must be between 0 and 255.\
     Default: 2.
     
 - umdiff, vmdiff\
     Same as ymdiff but for the chroma planes (u, v).\
-    Must be between 0 and 255.
+    Must be between 0 and 255.\
     Default: umdiff = 3; vmdiff = 3.
 
 - strength\
