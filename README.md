@@ -7,7 +7,7 @@ This is [a port of the VapourSynth plugin TTempSmooth](https://github.com/HomeOf
 # Usage
 
 ```
-vsTTempSmooth(clip, int "ythresh", int "uthresh", int "vthresh", int "ymdiff", bool "umdiff" , bool "vmdiff", int "strength", bool "fp", bool "y", bool "u", bool "v", clip "pfclip")
+vsTTempSmooth(clip, int "ythresh", int "uthresh", int "vthresh", int "ymdiff", bool "umdiff" , bool "vmdiff", int "strength", float "scthresh", bool "fp", bool "y", bool "u", bool "v", clip "pfclip")
 ```
 
 ## Parameters:
@@ -57,6 +57,11 @@ vsTTempSmooth(clip, int "ythresh", int "uthresh", int "vthresh", int "ymdiff", b
     The values shown are for maxr=7, when using smaller radius values the weights outside of the range are simply dropped. Thus, setting strength to a value of maxr+1 or higher will give you equal spatial weighting of all pixels in the kernel.\
     Must be between 1 and 8.\
     Default: 2.
+    
+- scthresh\
+    The standard scenechange threshold as a percentage of maximum possible change of the luma plane. A good range of values is between 8 and 15.\
+    Must be between 0.0 and 100.0.\
+    Default: 12.0.
     
 - fp\
     When true will add any weight not given to the outer pixels back onto the center pixel when computing the final value and it's much better for reducing artifacts in motion areas and usually produces overall better results. When false will just do a normal weighted average.\
