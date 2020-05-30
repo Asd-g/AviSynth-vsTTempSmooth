@@ -60,6 +60,7 @@ vsTTempSmooth(clip, int "ythresh", int "uthresh", int "vthresh", int "ymdiff", b
     
 - scthresh\
     The standard scenechange threshold as a percentage of maximum possible change of the luma plane. A good range of values is between 8 and 15.\
+    Set to 0 to disable scenechange detection.\
     Must be between 0.0 and 100.0.\
     Default: 12.0.
     
