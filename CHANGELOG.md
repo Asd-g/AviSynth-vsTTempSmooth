@@ -1,3 +1,6 @@
+##### 1.1.1:
+    Fixed memory misalignment for AviSynth 2.6.
+
 ##### 1.1.0:
     Added scthresh paramter.
 

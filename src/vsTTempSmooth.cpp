@@ -22,10 +22,9 @@ class TTempSmooth : public GenericVideoFilter
 	bool has_at_least_v8;
 
 	template<typename T, bool useDiff>
-	void filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, const TTempSmooth* const VS_RESTRICT, IScriptEnvironment* env) noexcept;
+	void filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, int src_stride, const TTempSmooth* const VS_RESTRICT, IScriptEnvironment* env) noexcept;
 	template<bool useDiff>
-	void filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, const TTempSmooth* const VS_RESTRICT, IScriptEnvironment* env) noexcept;
-	float ComparePlane(PVideoFrame& src, PVideoFrame& src1, IScriptEnvironment* env);
+	void filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, int src_stride, const TTempSmooth* const VS_RESTRICT, IScriptEnvironment* env) noexcept;
 
 public:
 	TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, bool fp, bool y, bool u, bool v, PClip pfclip, IScriptEnvironment* env);
@@ -37,10 +36,11 @@ public:
 };
 
 template<typename T, bool useDiff>
-void TTempSmooth::filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, const TTempSmooth* const VS_RESTRICT, IScriptEnvironment* env) noexcept
+void TTempSmooth::filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, int src_stride, const TTempSmooth* const VS_RESTRICT, IScriptEnvironment* env) noexcept
 {
 	const int width = dst->GetRowSize(plane) / vi.ComponentSize();
 	const int height = dst->GetHeight(plane);
+	src_stride /= sizeof(T);
 	const int stride = dst->GetPitch(plane) / sizeof(T);
 	const T* srcp[15] = {}, * pfp[15] = {};
 	for (int i = 0; i < _diameter; i++)
@@ -152,18 +152,19 @@ void TTempSmooth::filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& 
 
 		for (int i = 0; i < _diameter; i++)
 		{
-			srcp[i] += stride;
-			pfp[i] += stride;
+			srcp[i] += src_stride;
+			pfp[i] += src_stride;
 		}
 		dstp += stride;
 	}
 }
 
 template<bool useDiff>
-void TTempSmooth::filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, const TTempSmooth* const VS_RESTRICT, IScriptEnvironment* env) noexcept
+void TTempSmooth::filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, const int src_stride, const TTempSmooth* const VS_RESTRICT, IScriptEnvironment* env) noexcept
 {
 	const int width = dst->GetRowSize(plane) / vi.ComponentSize();
 	const int height = dst->GetHeight(plane);
+	src_stride /= sizeof(float);
 	const int stride = dst->GetPitch(plane) / sizeof(float);
 	const float* srcp[15] = {}, * pfp[15] = {};
 	for (int i = 0; i < _diameter; i++)
@@ -278,8 +279,8 @@ void TTempSmooth::filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& 
 
 		for (int i = 0; i < _diameter; i++)
 		{
-			srcp[i] += stride;
-			pfp[i] += stride;
+			srcp[i] += src_stride;
+			pfp[i] += src_stride;
 		}
 		dstp += stride;
 	}
@@ -297,7 +298,7 @@ static void copy_plane(PVideoFrame& dst, PVideoFrame& src, int plane, IScriptEnv
 }
 
 template<typename pixel_t>
-static double get_sad_c(const BYTE* c_plane8, const BYTE* t_plane8, size_t height, size_t width, size_t c_pitch, size_t t_pitch) {
+static double get_sad_c(const uint8_t* c_plane8, const uint8_t* t_plane8, size_t height, size_t width, size_t c_pitch, size_t t_pitch) {
 	const pixel_t* c_plane = reinterpret_cast<const pixel_t*>(c_plane8);
 	const pixel_t* t_plane = reinterpret_cast<const pixel_t*>(t_plane8);
 	c_pitch /= sizeof(pixel_t);
@@ -312,15 +313,12 @@ static double get_sad_c(const BYTE* c_plane8, const BYTE* t_plane8, size_t heigh
 		c_plane += c_pitch;
 		t_plane += t_pitch;
 	}
-	return (double)accum;
 
+	return (double)accum;
 }
 
-float TTempSmooth::ComparePlane(PVideoFrame& src, PVideoFrame& src1, IScriptEnvironment* env)
+static float ComparePlane(PVideoFrame& src, PVideoFrame& src1, const int pixelsize, const int bits_per_pixel, IScriptEnvironment* env)
 {
-	int pixelsize = vi.ComponentSize();
-	int bits_per_pixel = vi.BitsPerComponent();
-
 	const uint8_t* srcp = src->GetReadPtr(PLANAR_Y);
 	const uint8_t* srcp2 = src1->GetReadPtr(PLANAR_Y);
 	int height = src->GetHeight(PLANAR_Y);
@@ -344,10 +342,10 @@ float TTempSmooth::ComparePlane(PVideoFrame& src, PVideoFrame& src1, IScriptEnvi
 		sad = get_sad_c<uint16_t>(srcp, srcp2, height, width, pitch, pitch2);
 	else // pixelsize==4
 		sad = get_sad_c<float>(srcp, srcp2, height, width, pitch, pitch2);
-	
+
 	float f = static_cast<float>((sad / (static_cast<double>(height) * width)));
 
-	if (vi.BitsPerComponent() != 32)
+	if (bits_per_pixel != 32)
 		f /= static_cast<float>((static_cast<int64_t>(1) << bits_per_pixel) - 1);
 
 	return f;
@@ -427,7 +425,6 @@ TTempSmooth::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int v
 
 		if (proccesplanes[i])
 		{
-
 			if (_thresh[i] > _mdiff[i] + 1) {
 				_weight[i] = new float[256 * _maxr];
 				float dt[15] = {}, rt[256] = {}, sum = 0.f;
@@ -464,7 +461,8 @@ TTempSmooth::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int v
 
 				_cw = dt[0] / sum;
 			}
-			else {
+			else 
+			{
 				_weight[i] = new float[_diameter];
 				float dt[15] = {}, sum = 0.f;
 
@@ -497,18 +495,16 @@ PVideoFrame TTempSmooth::GetFrame(int n, IScriptEnvironment* env) {
 	PVideoFrame srcp = child->GetFrame(n - 1, env);
 	PVideoFrame srcn = child->GetFrame(n + 1, env);
 
-	int frameNumber;
-
 	for (int i = n - _maxr; i <= n + _maxr; i++)
 	{
-		frameNumber = min(max(i, 0), vi.num_frames - 1);
+		const int frameNumber = min(max(i, 0), vi.num_frames - 1);
 
 		src[i - n + _maxr] = child->GetFrame(frameNumber, env);
 
 		if (_pfclip)
 			pf[i - n + _maxr] = _pfclip->GetFrame(frameNumber, env);
 	}
-	
+
 	PVideoFrame dst;
 	if (has_at_least_v8)
 		dst = env->NewVideoFrameP(vi, &srcc);
@@ -516,21 +512,21 @@ PVideoFrame TTempSmooth::GetFrame(int n, IScriptEnvironment* env) {
 		dst = env->NewVideoFrame(vi);
 
 	int fromFrame = -1, toFrame = _diameter;
+	const int pixelsize = vi.ComponentSize();
+	const int bits_per_pixel = vi.BitsPerComponent();
 
-	
 	if (_scthresh)
 	{
 		for (int i = _maxr; i > 0; i--)
 		{
-			if (ComparePlane(srcc, srcp, env) > _scthresh / 100.f)
+			if (ComparePlane(srcc, srcp, pixelsize, bits_per_pixel, env) > _scthresh / 100.f)
 				fromFrame = i;
 			break;
-
 		}
 
 		for (int i = _maxr; i < _diameter - 1; i++)
 		{
-			if (ComparePlane(srcc, srcn, env) > _scthresh / 100.f)
+			if (ComparePlane(srcc, srcn, pixelsize, bits_per_pixel, env) > _scthresh / 100.f)
 				toFrame = i;
 			break;
 		}
@@ -543,25 +539,27 @@ PVideoFrame TTempSmooth::GetFrame(int n, IScriptEnvironment* env) {
 	{
 		const int plane = current_planes[i];
 
+		int src_stride = srcc->GetPitch(plane);
+
 		if (proccesplanes[i])
 		{
 			if (_thresh[i] > _mdiff[i] + 1)
 			{
 				if (vi.ComponentSize() == 1)
-					TTempSmooth::filterI<uint8_t, true>(src, _pfclip ? pf : src, dst, fromFrame, toFrame, plane, 0, env);
+					TTempSmooth::filterI<uint8_t, true>(src, _pfclip ? pf : src, dst, fromFrame, toFrame, plane, src_stride, 0, env);
 				else if (vi.ComponentSize() == 2)
-					TTempSmooth::filterI<uint16_t, true>(src, _pfclip ? pf : src, dst, fromFrame, toFrame, plane, 0, env);
+					TTempSmooth::filterI<uint16_t, true>(src, _pfclip ? pf : src, dst, fromFrame, toFrame, plane, src_stride, 0, env);
 				else
-					TTempSmooth::filterF<true>(src, _pfclip ? pf : src, dst, fromFrame, toFrame, plane, 0, env);
+					TTempSmooth::filterF<true>(src, _pfclip ? pf : src, dst, fromFrame, toFrame, plane, src_stride, 0, env);
 			}
 			else
 			{
 				if (vi.ComponentSize() == 1)
-					TTempSmooth::filterI<uint8_t, false>(src, _pfclip ? pf : src, dst, fromFrame, toFrame, plane, 0, env);
+					TTempSmooth::filterI<uint8_t, false>(src, _pfclip ? pf : src, dst, fromFrame, toFrame, plane, src_stride, 0, env);
 				else if (vi.ComponentSize() == 2)
-					TTempSmooth::filterI<uint16_t, false>(src, _pfclip ? pf : src, dst, fromFrame, toFrame, plane, 0, env);
+					TTempSmooth::filterI<uint16_t, false>(src, _pfclip ? pf : src, dst, fromFrame, toFrame, plane, src_stride, 0, env);
 				else
-					TTempSmooth::filterF<false>(src, _pfclip ? pf : src, dst, fromFrame, toFrame, plane, 0, env);
+					TTempSmooth::filterF<false>(src, _pfclip ? pf : src, dst, fromFrame, toFrame, plane, src_stride, 0, env);
 			}
 		}
 		else
@@ -573,7 +571,6 @@ PVideoFrame TTempSmooth::GetFrame(int n, IScriptEnvironment* env) {
 
 AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvironment* env)
 {
-
 	return new TTempSmooth(
 		args[0].AsClip(),
 		args[1].AsInt(3),
