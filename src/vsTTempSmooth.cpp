@@ -20,6 +20,7 @@ class TTempSmooth : public GenericVideoFilter
 	bool proccesplanes[3];
 	PClip _pfclip;
 	bool has_at_least_v8;
+	int planecount;
 
 	template<typename T, bool useDiff>
 	void filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, int src_stride, const TTempSmooth* const VS_RESTRICT, IScriptEnvironment* env) noexcept;
@@ -33,6 +34,7 @@ public:
 	{
 		return cachehints == CACHE_GET_MTMODE ? MT_MULTI_INSTANCE : 0;
 	}
+	~TTempSmooth();
 };
 
 template<typename T, bool useDiff>
@@ -160,7 +162,7 @@ void TTempSmooth::filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& 
 }
 
 template<bool useDiff>
-void TTempSmooth::filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, const int src_stride, const TTempSmooth* const VS_RESTRICT, IScriptEnvironment* env) noexcept
+void TTempSmooth::filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, int src_stride, const TTempSmooth* const VS_RESTRICT, IScriptEnvironment* env) noexcept
 {
 	const int width = dst->GetRowSize(plane) / vi.ComponentSize();
 	const int height = dst->GetHeight(plane);
@@ -401,7 +403,7 @@ TTempSmooth::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int v
 
 	_diameter = _maxr * 2 + 1;
 
-	int planecount = min(vi.NumComponents(), 3);
+	planecount = min(vi.NumComponents(), 3);
 	for (int i = 0; i < planecount; i++)
 	{
 		if (i == 0)
@@ -426,7 +428,7 @@ TTempSmooth::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int v
 		if (proccesplanes[i])
 		{
 			if (_thresh[i] > _mdiff[i] + 1) {
-				_weight[i] = new float[256 * _maxr];
+				_weight[i] = new float[256 * static_cast<int64_t>(_maxr)];
 				float dt[15] = {}, rt[256] = {}, sum = 0.f;
 
 				for (int i = 0; i < strength && i <= _maxr; i++)
@@ -488,6 +490,12 @@ TTempSmooth::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int v
 	}
 }
 
+TTempSmooth::~TTempSmooth()
+{
+	for (int i = 0; i < planecount; i++)
+		delete[] _weight[i];
+}
+
 PVideoFrame TTempSmooth::GetFrame(int n, IScriptEnvironment* env) {
 	PVideoFrame src[15] = {};
 	PVideoFrame pf[15] = {};
@@ -534,7 +542,7 @@ PVideoFrame TTempSmooth::GetFrame(int n, IScriptEnvironment* env) {
 
 	int planes_y[4] = { PLANAR_Y, PLANAR_U, PLANAR_V, PLANAR_A };
 	const int* current_planes = planes_y;
-	int planecount = min(vi.NumComponents(), 3);
+	planecount = min(vi.NumComponents(), 3);
 	for (int i = 0; i < planecount; i++)
 	{
 		const int plane = current_planes[i];
