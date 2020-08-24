@@ -360,8 +360,8 @@ TTempSmooth::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int v
 	try { env->CheckVersion(8); }
 	catch (const AvisynthError&) { has_at_least_v8 = false; }
 
-	if (vi.IsRGB())
-		env->ThrowError("vsTTempSmooth: clip must be Y/YUV(A) 8..32-bit format.");
+	if (vi.IsRGB() || !vi.IsPlanar())
+		env->ThrowError("vsTTempSmooth: clip must be Y/YUV(A) 8..32-bit planar format.");
 
 	if (_maxr < 1 || _maxr > 7)
 		env->ThrowError("vsTTempSmooth: maxr must be between 1..7.");
@@ -398,6 +398,13 @@ TTempSmooth::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int v
 		if (vi.num_frames != vi1.num_frames)
 			env->ThrowError("vsTTempSmooth: pfclip's number of frames doesn't match.");
 	}
+
+	_cw = 0;
+	*_mdiff = 0;
+	*_thresh = 0;
+	*_threshF = 0;
+	*_weight = 0;
+	*proccesplanes = 0;
 
 	_shift = vi.BitsPerComponent() - 8;
 

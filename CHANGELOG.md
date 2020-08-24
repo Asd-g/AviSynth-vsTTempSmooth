@@ -1,3 +1,6 @@
+##### 1.1.3:
+    Throw error for non-planar formats.
+
 ##### 1.1.2:
     Fixed memory leak.
 
