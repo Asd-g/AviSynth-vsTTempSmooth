@@ -1,16 +1,22 @@
-# Description
+## Description
 
 TTempSmooth is a motion adaptive (it only works on stationary parts of the picture), temporal smoothing filter.
 
 This is [a port of the VapourSynth plugin TTempSmooth](https://github.com/HomeOfVapourSynthEvolution/VapourSynth-TTempSmooth).
 
-# Usage
+### Requirements:
+
+- AviSynth 2.60 / AviSynth+ 3.4 or later
+
+- Microsoft VisualC++ Redistributable Package 2022 (can be downloaded from [here](https://github.com/abbodi1406/vcredist/releases))
+
+### Usage:
 
 ```
 vsTTempSmooth(clip, int "ythresh", int "uthresh", int "vthresh", int "ymdiff", bool "umdiff" , bool "vmdiff", int "strength", float "scthresh", bool "fp", bool "y", bool "u", bool "v", clip "pfclip")
 ```
 
-## Parameters:
+### Parameters:
 
 - clip\
     A clip to process. It must be Y/YUV(A) 8..32-bit format.
