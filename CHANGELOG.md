@@ -1,3 +1,7 @@
+##### 1.2.0:
+    Fixed crash when releasing memory.
+    Change the type of parameters `y`, `u`, `v` to int.
+
 ##### 1.1.3:
     Throw error for non-planar formats.
 
