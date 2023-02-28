@@ -13,7 +13,7 @@ This is [a port of the VapourSynth plugin TTempSmooth](https://github.com/HomeOf
 ### Usage:
 
 ```
-vsTTempSmooth(clip, int "ythresh", int "uthresh", int "vthresh", int "ymdiff", bool "umdiff" , bool "vmdiff", int "strength", float "scthresh", bool "fp", int "y", int "u", int "v", clip "pfclip")
+vsTTempSmooth(clip, int "ythresh", int "uthresh", int "vthresh", int "ymdiff", bool "umdiff" , bool "vmdiff", int "strength", float "scthresh", bool "fp", int "y", int "u", int "v", clip "pfclip", int "opt")
 ```
 
 ### Parameters:
@@ -83,3 +83,11 @@ vsTTempSmooth(clip, int "ythresh", int "uthresh", int "vthresh", int "ymdiff", b
 
 - pfclip\
     This allows you to specify a separate clip for TTempSmooth to use when calculating pixel differences. This applies to checking the motion thresholds, calculating inverse difference weights, and detecting scenechanges. Basically, the pfclip will be used to determine the weights in the average but the weights will be applied to the original input clip's pixel values.
+
+- Sets which cpu optimizations to use.\
+    -1: Auto-detect.\
+    0: Use C++ code.\
+    1: Use SSE2 code.\
+    2: Use AVX2 code.\
+    3: Use AVX-512 code.\
+    Default: -1.

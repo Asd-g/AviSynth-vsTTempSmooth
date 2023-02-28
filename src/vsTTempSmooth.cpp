@@ -1,40 +1,5 @@
-#include <algorithm>
-#include <array>
-#include <vector>
-
-#include "avisynth.h"
-
-template<bool pfclip>
-class TTempSmooth : public GenericVideoFilter
-{
-    int _maxr;
-    float _scthresh;
-    int _diameter;
-    int _thresh[3];
-    int _mdiff[3];
-    int _shift;
-    float _threshF[3];
-    std::array<std::vector<float>, 3> _weight;
-    float _cw;
-    int proccesplanes[3];
-    PClip _pfclip;
-    bool has_at_least_v8;
-
-    template<typename T, bool useDiff, bool fp>
-    void filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, int src_stride) noexcept;
-    template<bool useDiff, bool fp>
-    void filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, int src_stride) noexcept;
-
-    void(TTempSmooth::* filter)(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, int src_stride) noexcept;
-
-public:
-    TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, bool fp, int y, int u, int v, PClip pfclip_, IScriptEnvironment* env);
-    PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
-    int __stdcall SetCacheHints(int cachehints, int frame_range) override
-    {
-        return cachehints == CACHE_GET_MTMODE ? MT_MULTI_INSTANCE : 0;
-    }
-};
+#include "VCL2/instrset.h"
+#include "vsTTempSmooth.h"
 
 template <bool pfclip>
 template <typename T, bool useDiff, bool fp>
@@ -158,9 +123,9 @@ template <bool pfclip>
 template <bool useDiff, bool fp>
 void TTempSmooth<pfclip>::filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, int src_stride) noexcept
 {
-    src_stride /= sizeof(T);
-    const size_t stride{ dst->GetPitch(plane) / sizeof(T) };
-    const size_t width{ dst->GetRowSize(plane) / sizeof(T) };
+    src_stride /= 4;
+    const int stride{ dst->GetPitch(plane) / 4 };
+    const int width{ dst->GetRowSize(plane) / 4 };
     const int height{ dst->GetHeight(plane) };
     const float* srcp[15] = {}, * pfp[15] = {};
     for (int i{ 0 }; i < _diameter; ++i)
@@ -273,14 +238,9 @@ void TTempSmooth<pfclip>::filterF(PVideoFrame src[15], PVideoFrame pf[15], PVide
 }
 
 template <typename pixel_t>
-AVS_FORCEINLINE static double get_sad_c(const uint8_t* c_plane8, const uint8_t* t_plane8, size_t height, size_t width, size_t c_pitch, size_t t_pitch) noexcept
+AVS_FORCEINLINE static float get_sad_c(const pixel_t* c_plane, const pixel_t* t_plane, size_t height, size_t width, size_t c_pitch, size_t t_pitch) noexcept
 {
-    c_pitch /= sizeof(pixel_t);
-    t_pitch /= sizeof(pixel_t);
-    const pixel_t* c_plane{ reinterpret_cast<const pixel_t*>(c_plane8) };
-    const pixel_t* t_plane{ reinterpret_cast<const pixel_t*>(t_plane8) };
-
-    double accum{ 0 };
+    float accum{ 0.0f };
 
     for (size_t y{ 0 }; y < height; ++y)
     {
@@ -294,35 +254,28 @@ AVS_FORCEINLINE static double get_sad_c(const uint8_t* c_plane8, const uint8_t* 
     return accum;
 }
 
-static float ComparePlane(PVideoFrame& src, PVideoFrame& src1, const int pixelsize, const int bits_per_pixel, IScriptEnvironment* env)
+template <typename T>
+static float ComparePlane(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept
 {
-    int pitch{ src->GetPitch(PLANAR_Y) };
-    int pitch2{ src1->GetPitch(PLANAR_Y) };
-    int rowsize{ src->GetRowSize(PLANAR_Y) };
-    int width{ rowsize / pixelsize };
-    int height{ src->GetHeight(PLANAR_Y) };
-    const uint8_t* srcp{ src->GetReadPtr(PLANAR_Y) };
-    const uint8_t* srcp2{ src1->GetReadPtr(PLANAR_Y) };
+    const size_t pitch{ src->GetPitch(PLANAR_Y) / sizeof(T) };
+    const size_t pitch2{ src1->GetPitch(PLANAR_Y) / sizeof(T) };
+    const size_t width{ src->GetRowSize(PLANAR_Y) / sizeof(T) };
+    const int height{ src->GetHeight(PLANAR_Y) };
+    const T* srcp{ reinterpret_cast<const T*>(src->GetReadPtr(PLANAR_Y)) };
+    const T* srcp2{ reinterpret_cast<const T*>(src1->GetReadPtr(PLANAR_Y)) };
 
-    double sad{ 0 };
-    // for c: width, for sse: rowsize
-    if (pixelsize == 1)
-        sad = get_sad_c<uint8_t>(srcp, srcp2, height, width, pitch, pitch2);
-    else if (pixelsize == 2)
-        sad = get_sad_c<uint16_t>(srcp, srcp2, height, width, pitch, pitch2);
-    else // pixelsize==4
-        sad = get_sad_c<float>(srcp, srcp2, height, width, pitch, pitch2);
+    const float sad{ get_sad_c<T>(srcp, srcp2, height, width, pitch, pitch2) };
 
-    float f{ static_cast<float>((sad / (static_cast<double>(height) * width))) };
+    float f{ sad / (height * width) };
 
-    if (bits_per_pixel != 32)
-        f /= static_cast<float>((static_cast<int64_t>(1) << bits_per_pixel) - 1);
+    if constexpr (std::is_integral_v<T>)
+        f /= ((1 << bits_per_pixel) - 1);
 
     return f;
 }
 
 template <bool pfclip>
-TTempSmooth<pfclip>::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, bool fp, int y, int u, int v, PClip pfclip_, IScriptEnvironment* env)
+TTempSmooth<pfclip>::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, bool fp, int y, int u, int v, PClip pfclip_, int opt, IScriptEnvironment* env)
     : GenericVideoFilter(_child), _maxr(maxr), _scthresh(scthresh), _diameter(maxr * 2 + 1), _thresh{ ythresh, uthresh, vthresh }, _mdiff{ ymdiff, umdiff, vmdiff }, _shift(vi.BitsPerComponent() - 8), _threshF{ 0.0f, 0.0f, 0.0f },
     _cw(0.0f), _pfclip(pfclip_)
 {
@@ -348,6 +301,16 @@ TTempSmooth<pfclip>::TTempSmooth(PClip _child, int maxr, int ythresh, int uthres
         env->ThrowError("vsTTempSmooth: strength must be between 1..8.");
     if (_scthresh < 0.f || _scthresh > 100.f)
         env->ThrowError("vsTTempSmooth: scthresh must be between 0.0..100.0.");
+    if (opt < -1 || opt > 3)
+        env->ThrowError("vsTTempSmooth: opt must be between -1..3.");
+
+    const int iset{ instrset_detect() };
+    if (opt == 1 && iset < 2)
+        env->ThrowError("vsTTempSmooth: opt=1 requires SSE2.");
+    if (opt == 2 && iset < 8)
+        env->ThrowError("vsTTempSmooth: opt=2 requires AVX2.");
+    if (opt == 3 && iset < 10)
+        env->ThrowError("vsTTempSmooth: opt=3 requires AVX512F.");
 
     if constexpr (pfclip)
     {
@@ -438,22 +401,147 @@ TTempSmooth<pfclip>::TTempSmooth(PClip _child, int maxr, int ythresh, int uthres
             if (vi.ComponentSize() == 4)
                 _threshF[i] = _thresh[i] / 256.f;
 
-            if (_thresh[i] > _mdiff[i] + 1)
+            if ((opt == -1 && iset >= 10) || opt == 3)
             {
                 switch (vi.ComponentSize())
                 {
-                    case 1: filter = (fp) ? &TTempSmooth::filterI<uint8_t, true, true> : &TTempSmooth::filterI<uint8_t, true, false>; break;
-                    case 2: filter = (fp) ? &TTempSmooth::filterI<uint16_t, true, true> : &TTempSmooth::filterI<uint16_t, true, false>; break;
-                    default: filter = (fp) ? &TTempSmooth::filterI<float, true, true> : &TTempSmooth::filterI<float, true, false>;
+                    case 1:
+                    {
+                        if (_thresh[i] > _mdiff[i] + 1)
+                            filter = (fp) ? &TTempSmooth::filterI_avx512<uint8_t, true, true> : &TTempSmooth::filterI_avx512<uint8_t, true, false>;
+                        else
+                            filter = (fp) ? &TTempSmooth::filterI_avx512<uint8_t, false, true> : &TTempSmooth::filterI_avx512<uint8_t, false, false>;
+
+                        compare = ComparePlane_avx512<uint8_t>;
+                        break;
+                    }
+                    case 2:
+                    {
+                        if (_thresh[i] > _mdiff[i] + 1)
+                            filter = (fp) ? &TTempSmooth::filterI_avx512<uint16_t, true, true> : &TTempSmooth::filterI_avx512<uint16_t, true, false>;
+                        else
+                            filter = (fp) ? &TTempSmooth::filterI_avx512<uint16_t, false, true> : &TTempSmooth::filterI_avx512<uint16_t, false, false>;
+
+                        compare = ComparePlane_avx512<uint16_t>;
+                        break;
+                    }
+                    default:
+                    {
+                        if (_thresh[i] > _mdiff[i] + 1)
+                            filter = (fp) ? &TTempSmooth::filterF_avx512<true, true> : &TTempSmooth::filterF_avx512<true, false>;
+                        else
+                            filter = (fp) ? &TTempSmooth::filterF_avx512<false, true> : &TTempSmooth::filterF_avx512<false, false>;
+
+                        compare = ComparePlane_avx512<float>;
+                    }
+
+                }
+            }
+            else if ((opt == -1 && iset >= 8) || opt == 2)
+            {
+                switch (vi.ComponentSize())
+                {
+                    case 1:
+                    {
+                        if (_thresh[i] > _mdiff[i] + 1)
+                            filter = (fp) ? &TTempSmooth::filterI_avx2<uint8_t, true, true> : &TTempSmooth::filterI_avx2<uint8_t, true, false>;
+                        else
+                            filter = (fp) ? &TTempSmooth::filterI_avx2<uint8_t, false, true> : &TTempSmooth::filterI_avx2<uint8_t, false, false>;
+
+                        compare = ComparePlane_avx2<uint8_t>;
+                        break;
+                    }
+                    case 2:
+                    {
+                        if (_thresh[i] > _mdiff[i] + 1)
+                            filter = (fp) ? &TTempSmooth::filterI_avx2<uint16_t, true, true> : &TTempSmooth::filterI_avx2<uint16_t, true, false>;
+                        else
+                            filter = (fp) ? &TTempSmooth::filterI_avx2<uint16_t, false, true> : &TTempSmooth::filterI_avx2<uint16_t, false, false>;
+
+                        compare = ComparePlane_avx2<uint16_t>;
+                        break;
+                    }
+                    default:
+                    {
+                        if (_thresh[i] > _mdiff[i] + 1)
+                            filter = (fp) ? &TTempSmooth::filterF_avx2<true, true> : &TTempSmooth::filterF_avx2<true, false>;
+                        else
+                            filter = (fp) ? &TTempSmooth::filterF_avx2<false, true> : &TTempSmooth::filterF_avx2<false, false>;
+
+                        compare = ComparePlane_avx2<float>;
+                    }
+                }
+            }
+            else if ((opt == -1 && iset >= 2) || opt == 1)
+            {
+                switch (vi.ComponentSize())
+                {
+                    case 1:
+                    {
+                        if (_thresh[i] > _mdiff[i] + 1)
+                            filter = (fp) ? &TTempSmooth::filterI_sse2<uint8_t, true, true> : &TTempSmooth::filterI_sse2<uint8_t, true, false>;
+                        else
+                            filter = (fp) ? &TTempSmooth::filterI_sse2<uint8_t, false, true> : &TTempSmooth::filterI_sse2<uint8_t, false, false>;
+
+                        compare = ComparePlane_sse2<uint8_t>;
+                        break;
+                    }
+                    case 2:
+                    {
+                        if (_thresh[i] > _mdiff[i] + 1)
+                            filter = (fp) ? &TTempSmooth::filterI_sse2<uint16_t, true, true> : &TTempSmooth::filterI_sse2<uint16_t, true, false>;
+                        else
+                            filter = (fp) ? &TTempSmooth::filterI_sse2<uint16_t, false, true> : &TTempSmooth::filterI_sse2<uint16_t, false, false>;
+
+                        compare = ComparePlane_sse2<uint16_t>;
+                        break;
+                    }
+                    default:
+                    {
+                        if (_thresh[i] > _mdiff[i] + 1)
+                            filter = (fp) ? &TTempSmooth::filterF_sse2<true, true> : &TTempSmooth::filterF_sse2<true, false>;
+                        else
+                            filter = (fp) ? &TTempSmooth::filterF_sse2<false, true> : &TTempSmooth::filterF_sse2<false, false>;
+
+                        compare = ComparePlane_sse2<float>;
+                    }
+
                 }
             }
             else
             {
                 switch (vi.ComponentSize())
                 {
-                    case 1: filter = (fp) ? &TTempSmooth::filterI<uint8_t, false, true> : &TTempSmooth::filterI<uint8_t, false, false>; break;
-                    case 2: filter = (fp) ? &TTempSmooth::filterI<uint16_t, false, true> : &TTempSmooth::filterI<uint16_t, false, false>; break;
-                    default: filter = (fp) ? &TTempSmooth::filterI<float, false, true> : &TTempSmooth::filterI<float, false, false>;
+                    case 1:
+                    {
+                        if (_thresh[i] > _mdiff[i] + 1)
+                            filter = (fp) ? &TTempSmooth::filterI<uint8_t, true, true> : &TTempSmooth::filterI<uint8_t, true, false>;
+                        else
+                            filter = (fp) ? &TTempSmooth::filterI<uint8_t, false, true> : &TTempSmooth::filterI<uint8_t, false, false>;
+
+                        compare = ComparePlane<uint8_t>;
+                        break;
+                    }
+                    case 2:
+                    {
+                        if (_thresh[i] > _mdiff[i] + 1)
+                            filter = (fp) ? &TTempSmooth::filterI<uint16_t, true, true> : &TTempSmooth::filterI<uint16_t, true, false>;
+                        else
+                            filter = (fp) ? &TTempSmooth::filterI<uint16_t, false, true> : &TTempSmooth::filterI<uint16_t, false, false>;
+
+                        compare = ComparePlane<uint16_t>;
+                        break;
+                    }
+                    default:
+                    {
+                        if (_thresh[i] > _mdiff[i] + 1)
+                            filter = (fp) ? &TTempSmooth::filterF<true, true> : &TTempSmooth::filterF<true, false>;
+                        else
+                            filter = (fp) ? &TTempSmooth::filterF<false, true> : &TTempSmooth::filterF<false, false>;
+
+                        compare = ComparePlane<float>;
+                    }
+
                 }
             }
         }
@@ -483,23 +571,26 @@ PVideoFrame __stdcall TTempSmooth<pfclip>::GetFrame(int n, IScriptEnvironment* e
 
     int fromFrame{ -1 };
     int toFrame{ _diameter };
-    const int pixelsize{ vi.ComponentSize() };
     const int bits_per_pixel{ vi.BitsPerComponent() };
 
     if (_scthresh)
     {
         for (int i{ _maxr }; i > 0; --i)
         {
-            if (ComparePlane(srcc, srcp, pixelsize, bits_per_pixel, env) > _scthresh / 100.f)
+            if (compare(srcc, srcp, bits_per_pixel) > _scthresh / 100.f)
+            {
                 fromFrame = i;
-            break;
+                break;
+            }
         }
 
         for (int i{ _maxr }; i < _diameter - 1; ++i)
         {
-            if (ComparePlane(srcc, srcn, pixelsize, bits_per_pixel, env) > _scthresh / 100.f)
+            if (compare(srcc, srcn, bits_per_pixel) > _scthresh / 100.f)
+            {
                 toFrame = i;
-            break;
+                break;
+            }
         }
     }
 
@@ -517,7 +608,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip>::GetFrame(int n, IScriptEnvironment* e
 
 AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvironment* env)
 {
-    enum { Clip, Maxr, Ythresh, Uthresh, Vthresh, Ymdiff, Umdiff, Vmdiff, Strength, Scthresh, Fp, Y, U, V, Pfclip };
+    enum { Clip, Maxr, Ythresh, Uthresh, Vthresh, Ymdiff, Umdiff, Vmdiff, Strength, Scthresh, Fp, Y, U, V, Pfclip, Opt };
 
     PClip pfclip{ (args[Pfclip].Defined() ? args[Pfclip].AsClip() : nullptr) };
 
@@ -538,6 +629,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
             args[U].AsInt(3),
             args[V].AsInt(3),
             pfclip,
+            args[Opt].AsInt(-1),
             env);
     else
         return new TTempSmooth<false>(
@@ -556,6 +648,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
             args[U].AsInt(3),
             args[V].AsInt(3),
             pfclip,
+            args[Opt].AsInt(-1),
             env);
 }
 
@@ -566,6 +659,6 @@ const char* __stdcall AvisynthPluginInit3(IScriptEnvironment * env, const AVS_Li
 {
     AVS_linkage = vectors;
 
-    env->AddFunction("vsTTempSmooth", "c[maxr]i[ythresh]i[uthresh]i[vthresh]i[ymdiff]i[umdiff]i[vmdiff]i[strength]i[scthresh]f[fp]b[y]i[u]i[v]i[pfclip]c", Create_TTempSmooth, 0);
+    env->AddFunction("vsTTempSmooth", "c[maxr]i[ythresh]i[uthresh]i[vthresh]i[ymdiff]i[umdiff]i[vmdiff]i[strength]i[scthresh]f[fp]b[y]i[u]i[v]i[pfclip]c[opt]i", Create_TTempSmooth, 0);
     return "vsTTempSmooth";
 }

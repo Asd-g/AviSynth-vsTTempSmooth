@@ -144,15 +144,14 @@
       <FloatingPointModel>Precise</FloatingPointModel>
       <LanguageStandard>stdcpp17</LanguageStandard>
       <InterproceduralOptimization>MultiFile</InterproceduralOptimization>
-      <WholeProgramOptimization>false</WholeProgramOptimization>
+      <WholeProgramOptimization>true</WholeProgramOptimization>
     </ClCompile>
     <Link>
       <OptimizeReferences>true</OptimizeReferences>
     </Link>
     <Link>
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
-      <LinkTimeCodeGeneration>
-      </LinkTimeCodeGeneration>
+      <LinkTimeCodeGeneration>UseLinkTimeCodeGeneration</LinkTimeCodeGeneration>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
@@ -162,10 +161,23 @@
     </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="..\src\VCL2\instrset_detect.cpp" />
     <ClCompile Include="..\src\vsTTempSmooth.cpp" />
+    <ClCompile Include="..\src\vsTTempSmooth_AVX2.cpp">
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Release|x64'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">AdvancedVectorExtensions2</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <ClCompile Include="..\src\vsTTempSmooth_AVX512.cpp">
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
+      <EnableEnhancedInstructionSet Condition="'$(Configuration)|$(Platform)'=='Release|x64'">AdvancedVectorExtensions512</EnableEnhancedInstructionSet>
+    </ClCompile>
+    <ClCompile Include="..\src\vsTTempSmooth_SSE2.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="..\src\vsTTempSmooth.rc" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\src\vsTTempSmooth.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
