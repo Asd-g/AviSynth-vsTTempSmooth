@@ -3,6 +3,7 @@
     Added parameter `opt`.
     Added SSE2, AVX2, AVX-512 code.
     Fixed earlier exit of the scene change detection.
+    Fixed memory misalignment.
 
 ##### 1.2.0:
     Fixed crash when releasing memory.

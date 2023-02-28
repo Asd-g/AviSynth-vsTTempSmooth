@@ -3,15 +3,19 @@
 
 template <bool pfclip>
 template <typename T, bool useDiff, bool fp>
-void TTempSmooth<pfclip>::filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, int src_stride) noexcept
+void TTempSmooth<pfclip>::filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept
 {
-    src_stride /= sizeof(T);
+    int src_stride[15]{};
+    int pf_stride[15]{};
     const size_t stride{ dst->GetPitch(plane) / sizeof(T) };
     const size_t width{ dst->GetRowSize(plane) / sizeof(T) };
     const int height{ dst->GetHeight(plane) };
-    const T* srcp[15] = {}, * pfp[15] = {};
+    const T* srcp[15]{}, * pfp[15]{};
+
     for (int i{ 0 }; i < _diameter; ++i)
     {
+        src_stride[i] = src[i]->GetPitch(plane) / sizeof(T);
+        pf_stride[i] = pf[i]->GetPitch(plane) / sizeof(T);
         srcp[i] = reinterpret_cast<const T*>(src[i]->GetReadPtr(plane));
         pfp[i] = reinterpret_cast<const T*>(pf[i]->GetReadPtr(plane));
     }
@@ -112,24 +116,28 @@ void TTempSmooth<pfclip>::filterI(PVideoFrame src[15], PVideoFrame pf[15], PVide
 
         for (int i{ 0 }; i < _diameter; ++i)
         {
-            srcp[i] += src_stride;
-            pfp[i] += src_stride;
+            srcp[i] += src_stride[i];
+            pfp[i] += pf_stride[i];
         }
+
         dstp += stride;
     }
 }
 
 template <bool pfclip>
 template <bool useDiff, bool fp>
-void TTempSmooth<pfclip>::filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane, int src_stride) noexcept
+void TTempSmooth<pfclip>::filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept
 {
-    src_stride /= 4;
+    int src_stride[15]{};
+    int pf_stride[15]{};
     const int stride{ dst->GetPitch(plane) / 4 };
     const int width{ dst->GetRowSize(plane) / 4 };
     const int height{ dst->GetHeight(plane) };
-    const float* srcp[15] = {}, * pfp[15] = {};
+    const float* srcp[15]{}, * pfp[15]{};
     for (int i{ 0 }; i < _diameter; ++i)
     {
+        src_stride[i] = src[i]->GetPitch(plane) / 4;
+        pf_stride[i] = pf[i]->GetPitch(plane) / 4;
         srcp[i] = reinterpret_cast<const float*>(src[i]->GetReadPtr(plane));
         pfp[i] = reinterpret_cast<const float*>(pf[i]->GetReadPtr(plane));
     }
@@ -230,9 +238,10 @@ void TTempSmooth<pfclip>::filterF(PVideoFrame src[15], PVideoFrame pf[15], PVide
 
         for (int i{ 0 }; i < _diameter; ++i)
         {
-            srcp[i] += src_stride;
-            pfp[i] += src_stride;
+            srcp[i] += src_stride[i];
+            pfp[i] += pf_stride[i];
         }
+
         dstp += stride;
     }
 }
@@ -598,7 +607,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip>::GetFrame(int n, IScriptEnvironment* e
     for (int i{ 0 }; i < std::min(vi.NumComponents(), 3); ++i)
     {
         if (proccesplanes[i] == 3)
-            (this->*filter)(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i], srcc->GetPitch(planes_y[i]));
+            (this->*filter)(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
         else if (proccesplanes[i] == 2)
             env->BitBlt(dst->GetWritePtr(planes_y[i]), dst->GetPitch(planes_y[i]), srcc->GetReadPtr(planes_y[i]), srcc->GetPitch(planes_y[i]), srcc->GetRowSize(planes_y[i]), srcc->GetHeight(planes_y[i]));
     }
