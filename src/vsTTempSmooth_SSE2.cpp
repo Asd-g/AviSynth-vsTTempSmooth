@@ -272,9 +272,9 @@ void TTempSmooth<pfclip>::filterF_sse2(PVideoFrame src[15], PVideoFrame pf[15], 
             }
 
             if constexpr (fp)
-                (Vec4f().load(&srcp[_maxr][x]) * (1.0f - weights) + sum).store_nt(dstp + x);
+                (Vec4f().load(&srcp[_maxr][x]) * (1.0f - weights) + sum).store(dstp + x);
             else
-                (sum / weights).store_nt(dstp + x);
+                (sum / weights).store(dstp + x);
         }
 
         for (int i{ 0 }; i < _diameter; ++i)

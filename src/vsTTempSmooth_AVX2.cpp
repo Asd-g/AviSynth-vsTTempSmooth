@@ -120,16 +120,16 @@ void TTempSmooth<pfclip>::filterI_avx2(PVideoFrame src[15], PVideoFrame pf[15], 
             if constexpr (std::is_same_v<T, uint8_t>)
             {
                 if constexpr (fp)
-                    compress_saturated_s2u(compress_saturated(truncatei(to_float(load<T>(&srcp[_maxr][x])) * (1.0f - weights) + sum + 0.5f), zero_si256()), zero_si256()).store(dstp + x);
+                    compress_saturated_s2u(compress_saturated(truncatei(to_float(load<T>(&srcp[_maxr][x])) * (1.0f - weights) + sum + 0.5f), zero_si256()), zero_si256()).get_low().storel(dstp + x);
                 else
-                    compress_saturated_s2u(compress_saturated(truncatei(sum / weights + 0.5f), zero_si256()), zero_si256()).store(dstp + x);
+                    compress_saturated_s2u(compress_saturated(truncatei(sum / weights + 0.5f), zero_si256()), zero_si256()).get_low().storel(dstp + x);
             }
             else
             {
                 if constexpr (fp)
-                    compress_saturated_s2u(truncatei(to_float(load<T>(&srcp[_maxr][x])) * (1.0f - weights) + sum + 0.5f), zero_si256()).store(dstp + x);
+                    compress_saturated_s2u(truncatei(to_float(load<T>(&srcp[_maxr][x])) * (1.0f - weights) + sum + 0.5f), zero_si256()).get_low().store(dstp + x);
                 else
-                    compress_saturated_s2u(truncatei(sum / weights + 0.5f), zero_si256()).store(dstp + x);
+                    compress_saturated_s2u(truncatei(sum / weights + 0.5f), zero_si256()).get_low().store(dstp + x);
             }
         }
 
@@ -272,9 +272,9 @@ void TTempSmooth<pfclip>::filterF_avx2(PVideoFrame src[15], PVideoFrame pf[15], 
             }
 
             if constexpr (fp)
-                (Vec8f().load(&srcp[_maxr][x]) * (1.0f - weights) + sum).store_nt(dstp + x);
+                (Vec8f().load(&srcp[_maxr][x]) * (1.0f - weights) + sum).store(dstp + x);
             else
-                (sum / weights).store_nt(dstp + x);
+                (sum / weights).store(dstp + x);
         }
 
         for (int i{ 0 }; i < _diameter; ++i)

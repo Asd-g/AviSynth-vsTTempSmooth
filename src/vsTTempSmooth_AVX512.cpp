@@ -121,16 +121,16 @@ void TTempSmooth<pfclip>::filterI_avx512(PVideoFrame src[15], PVideoFrame pf[15]
             if constexpr (std::is_same_v<T, uint8_t>)
             {
                 if constexpr (fp)
-                    compress_saturated_s2u(compress_saturated(truncatei(to_float(load<T>(&srcp[_maxr][x])) * (1.0f - weights) + sum + 0.5f), zero_si512()), zero_si512()).store(dstp + x);
+                    compress_saturated_s2u(compress_saturated(truncatei(to_float(load<T>(&srcp[_maxr][x])) * (1.0f - weights) + sum + 0.5f), zero_si512()), zero_si512()).get_low().get_low().store(dstp + x);
                 else
-                    compress_saturated_s2u(compress_saturated(truncatei(sum / weights + 0.5f), zero_si512()), zero_si512()).store(dstp + x);
+                    compress_saturated_s2u(compress_saturated(truncatei(sum / weights + 0.5f), zero_si512()), zero_si512()).get_low().get_low().store(dstp + x);
             }
             else
             {
                 if constexpr (fp)
-                    compress_saturated_s2u(truncatei(to_float(load<T>(&srcp[_maxr][x])) * (1.0f - weights) + sum + 0.5f), zero_si512()).store(dstp + x);
+                    compress_saturated_s2u(truncatei(to_float(load<T>(&srcp[_maxr][x])) * (1.0f - weights) + sum + 0.5f), zero_si512()).get_low().store(dstp + x);
                 else
-                    compress_saturated_s2u(truncatei(sum / weights + 0.5f), zero_si512()).store(dstp + x);
+                    compress_saturated_s2u(truncatei(sum / weights + 0.5f), zero_si512()).get_low().store(dstp + x);
             }
         }
 
@@ -272,9 +272,9 @@ void TTempSmooth<pfclip>::filterF_avx512(PVideoFrame src[15], PVideoFrame pf[15]
             }
 
             if constexpr (fp)
-                (Vec16f().load(&srcp[_maxr][x]) * (1.0f - weights) + sum).store_nt(dstp + x);
+                (Vec16f().load(&srcp[_maxr][x]) * (1.0f - weights) + sum).store(dstp + x);
             else
-                (sum / weights).store_nt(dstp + x);
+                (sum / weights).store(dstp + x);
         }
 
         for (int i{ 0 }; i < _diameter; ++i)
