@@ -6,7 +6,7 @@
 
 #include "avisynth.h"
 
-template<bool pfclip>
+template<bool pfclip, bool fp>
 class TTempSmooth : public GenericVideoFilter
 {
     int _maxr;
@@ -21,33 +21,32 @@ class TTempSmooth : public GenericVideoFilter
     int proccesplanes[3];
     PClip _pfclip;
     bool has_at_least_v8;
+    int _opt;
 
-    template<typename T, bool useDiff, bool fp>
+    template<typename T, bool useDiff>
     void filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-    template<bool useDiff, bool fp>
+    template<bool useDiff>
     void filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
-    template<typename T, bool useDiff, bool fp>
+    template<typename T, bool useDiff>
     void filterI_sse2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-    template<bool useDiff, bool fp>
+    template<bool useDiff>
     void filterF_sse2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
-    template<typename T, bool useDiff, bool fp>
+    template<typename T, bool useDiff>
     void filterI_avx2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-    template<bool useDiff, bool fp>
+    template<bool useDiff>
     void filterF_avx2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
-    template<typename T, bool useDiff, bool fp>
+    template<typename T, bool useDiff>
     void filterI_avx512(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-    template<bool useDiff, bool fp>
+    template<bool useDiff>
     void filterF_avx512(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-
-    void(TTempSmooth::* filter)(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
     float (*compare)(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
 
 public:
-    TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, bool fp, int y, int u, int v, PClip pfclip_, int opt, IScriptEnvironment* env);
+    TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, int y, int u, int v, PClip pfclip_, int opt, IScriptEnvironment* env);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
     int __stdcall SetCacheHints(int cachehints, int frame_range) override
     {

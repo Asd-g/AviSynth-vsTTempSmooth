@@ -11,9 +11,9 @@ AVS_FORCEINLINE static Vec16i load(const void* p)
         return Vec16i().load_16us(p);
 }
 
-template <bool pfclip>
-template <typename T, bool useDiff, bool fp>
-void TTempSmooth<pfclip>::filterI_avx512(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept
+template <bool pfclip, bool fp>
+template <typename T, bool useDiff>
+void TTempSmooth<pfclip, fp>::filterI_avx512(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept
 {
     int src_stride[15]{};
     int pf_stride[15]{};
@@ -144,29 +144,29 @@ void TTempSmooth<pfclip>::filterI_avx512(PVideoFrame src[15], PVideoFrame pf[15]
     }
 }
 
-template void TTempSmooth<1>::filterI_avx512<uint8_t, true, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<1>::filterI_avx512<uint8_t, true, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<1>::filterI_avx512<uint8_t, false, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<1>::filterI_avx512<uint8_t, false, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<true, true>::filterI_avx512<uint8_t, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<true, false>::filterI_avx512<uint8_t, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<true, true>::filterI_avx512<uint8_t, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<true, false>::filterI_avx512<uint8_t, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
-template void TTempSmooth<0>::filterI_avx512<uint8_t, true, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<0>::filterI_avx512<uint8_t, true, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<0>::filterI_avx512<uint8_t, false, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<0>::filterI_avx512<uint8_t, false, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<false, true>::filterI_avx512<uint8_t, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<false, false>::filterI_avx512<uint8_t, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<false, true>::filterI_avx512<uint8_t, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<false, false>::filterI_avx512<uint8_t, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
-template void TTempSmooth<1>::filterI_avx512<uint16_t, true, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<1>::filterI_avx512<uint16_t, true, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<1>::filterI_avx512<uint16_t, false, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<1>::filterI_avx512<uint16_t, false, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<true, true>::filterI_avx512<uint16_t, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<true, false>::filterI_avx512<uint16_t, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<true, true>::filterI_avx512<uint16_t, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<true, false>::filterI_avx512<uint16_t, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
-template void TTempSmooth<0>::filterI_avx512<uint16_t, true, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<0>::filterI_avx512<uint16_t, true, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<0>::filterI_avx512<uint16_t, false, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<0>::filterI_avx512<uint16_t, false, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<false, true>::filterI_avx512<uint16_t, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<false, false>::filterI_avx512<uint16_t, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<false, true>::filterI_avx512<uint16_t, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<false, false>::filterI_avx512<uint16_t, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
-template <bool pfclip>
-template <bool useDiff, bool fp>
-void TTempSmooth<pfclip>::filterF_avx512(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept
+template <bool pfclip, bool fp>
+template <bool useDiff>
+void TTempSmooth<pfclip, fp>::filterF_avx512(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept
 {
     int src_stride[15]{};
     int pf_stride[15]{};
@@ -287,15 +287,15 @@ void TTempSmooth<pfclip>::filterF_avx512(PVideoFrame src[15], PVideoFrame pf[15]
     }
 }
 
-template void TTempSmooth<1>::filterF_avx512<true, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<1>::filterF_avx512<true, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<1>::filterF_avx512<false, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<1>::filterF_avx512<false, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<true, true>::filterF_avx512<true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<true, false>::filterF_avx512<true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<true, true>::filterF_avx512<false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<true, false>::filterF_avx512<false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
-template void TTempSmooth<0>::filterF_avx512<true, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<0>::filterF_avx512<true, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<0>::filterF_avx512<false, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-template void TTempSmooth<0>::filterF_avx512<false, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<false, true>::filterF_avx512<true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<false, false>::filterF_avx512<true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<false, true>::filterF_avx512<false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+template void TTempSmooth<false, false>::filterF_avx512<false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
 template <typename T>
 float ComparePlane_avx512(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept

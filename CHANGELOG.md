@@ -1,3 +1,8 @@
+##### 1.2.2:
+    Fixed used frames for scene change detection.
+    Fixed memory allocation for inverse pixel difference weighting.
+    Fixed inverse pixel difference weighting to work properly for every processed plane.
+
 ##### 1.2.1:
     Fixed processing with float clips. (regression from `1.2.0`)
     Added parameter `opt`.
