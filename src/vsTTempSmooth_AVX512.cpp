@@ -32,115 +32,362 @@ void TTempSmooth<pfclip, fp>::filterI_avx512(PVideoFrame src[15], PVideoFrame pf
     T* __restrict dstp{ reinterpret_cast<T*>(dst->GetWritePtr(plane)) };
 
     const int l{ plane >> 1 };
+    const float* const weightSaved{ _weight[l].data() };
     const Vec16i thresh{ _thresh[l] << _shift };
 
-    for (int y{ 0 }; y < height; ++y)
+    if constexpr (std::is_same_v<T, uint8_t>)
     {
-        for (int x{ 0 }; x < width; x += 16)
+        for (int y{ 0 }; y < height; ++y)
         {
-            const auto& c{ load<T>(&pfp[_maxr][x]) };
-            const auto& srcp_v{ load<T>(&srcp[_maxr][x]) };
-
-            Vec16f weights{ _cw };
-            Vec16f sum{ to_float(srcp_v) * weights };
-
-            int frameIndex{ _maxr - 1 };
-
-            if (frameIndex > fromFrame)
+            for (int x{ 0 }; x < width; x += 64)
             {
-                auto t1{ load<T>(&pfp[frameIndex][x]) };
-                auto diff{ abs(c - t1) };
-                const auto check_v{ diff < thresh };
+                const auto& c01{ load<T>(&pfp[_maxr][x]) };
+                const auto& srcp_v01{ load<T>(&srcp[_maxr][x]) };
 
-                Vec16f weight;
-                for (int i{ 0 }; i < 16; ++i)
-                    weight.insert(i, _weight[l][(useDiff) ? (diff.extract(i) >> _shift) : frameIndex]);
+                const auto& c02{ load<T>(&pfp[_maxr][x + 16]) };
+                const auto& srcp_v02{ load<T>(&srcp[_maxr][x + 16]) };
 
-                weights = select(Vec16fb(check_v), weights + weight, weights);
-                sum = select(Vec16fb(check_v), sum + to_float(load<T>(&srcp[frameIndex][x])) * weight, sum);
+                const auto& c03{ load<T>(&pfp[_maxr][x + 32]) };
+                const auto& srcp_v03{ load<T>(&srcp[_maxr][x + 32]) };
 
-                --frameIndex;
-                int v{ 256 };
+                const auto& c04{ load<T>(&pfp[_maxr][x + 48]) };
+                const auto& srcp_v04{ load<T>(&srcp[_maxr][x + 48]) };
 
-                while (frameIndex > fromFrame)
+                Vec16f weights01{ _cw };
+                auto sum01{ to_float(srcp_v01) * weights01 };
+
+                Vec16f weights02{ _cw };
+                auto sum02{ to_float(srcp_v02) * weights02 };
+
+                Vec16f weights03{ _cw };
+                auto sum03{ to_float(srcp_v03) * weights03 };
+
+                Vec16f weights04{ _cw };
+                auto sum04{ to_float(srcp_v04) * weights04 };
+
+                int frameIndex{ _maxr - 1 };
+
+                if (frameIndex > fromFrame)
                 {
-                    const auto& t2{ t1 };
-                    t1 = load<T>(&pfp[frameIndex][x]);
-                    diff = abs(c - t1);
-                    const auto check_v1{ diff < thresh&& abs(t1 - t2) < thresh };
+                    auto t1_01{ load<T>(&pfp[frameIndex][x]) };
+                    auto diff01{ abs(c01 - t1_01) };
+                    const auto check_v01{ diff01 < thresh };
 
-                    Vec16f weight;
-                    for (int i{ 0 }; i < 16; ++i)
-                        weight.insert(i, _weight[l][(useDiff) ? ((diff.extract(i) >> _shift) + v) : frameIndex]);
+                    auto t1_02{ load<T>(&pfp[frameIndex][x + 16]) };
+                    auto diff02{ abs(c02 - t1_02) };
+                    const auto check_v02{ diff02 < thresh };
 
-                    weights = select(Vec16fb(check_v1), weights + weight, weights);
-                    sum = select(Vec16fb(check_v1), sum + to_float(load<T>(&srcp[frameIndex][x])) * weight, sum);
+                    auto t1_03{ load<T>(&pfp[frameIndex][x + 32]) };
+                    auto diff03{ abs(c03 - t1_03) };
+                    const auto check_v03{ diff03 < thresh };
+
+                    auto t1_04{ load<T>(&pfp[frameIndex][x + 48]) };
+                    auto diff04{ abs(c04 - t1_04) };
+                    const auto check_v04{ diff04 < thresh };
+
+                    auto weight01{ (useDiff) ? lookup<1792>(diff01 >> _shift, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved) };
+                    auto weight02{ (useDiff) ? lookup<1792>(diff02 >> _shift, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved) };
+                    auto weight03{ (useDiff) ? lookup<1792>(diff03 >> _shift, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved) };
+                    auto weight04{ (useDiff) ? lookup<1792>(diff04 >> _shift, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved) };
+
+                    weights01 = select(Vec16fb(check_v01), weights01 + weight01, weights01);
+                    weights02 = select(Vec16fb(check_v02), weights02 + weight02, weights02);
+                    weights03 = select(Vec16fb(check_v03), weights03 + weight03, weights03);
+                    weights04 = select(Vec16fb(check_v04), weights04 + weight04, weights04);
+
+                    sum01 = select(Vec16fb(check_v01), mul_add(to_float(load<T>(&srcp[frameIndex][x])), weight01, sum01), sum01);
+                    sum02 = select(Vec16fb(check_v02), mul_add(to_float(load<T>(&srcp[frameIndex][x + 16])), weight02, sum02), sum02);
+                    sum03 = select(Vec16fb(check_v03), mul_add(to_float(load<T>(&srcp[frameIndex][x + 32])), weight03, sum03), sum03);
+                    sum04 = select(Vec16fb(check_v04), mul_add(to_float(load<T>(&srcp[frameIndex][x + 48])), weight04, sum04), sum04);
 
                     --frameIndex;
-                    v += 256;
+                    int v{ 256 };
+
+                    while (frameIndex > fromFrame)
+                    {
+                        const auto& t2_01{ t1_01 };
+                        t1_01 = load<T>(&pfp[frameIndex][x]);
+                        diff01 = abs(c01 - t1_01);
+                        const auto check_v1_01{ diff01 < thresh&& abs(t1_01 - t2_01) < thresh };
+
+                        const auto& t2_02{ t1_02 };
+                        t1_02 = load<T>(&pfp[frameIndex][x + 16]);
+                        diff02 = abs(c02 - t1_02);
+                        const auto check_v1_02{ diff02 < thresh&& abs(t1_02 - t2_02) < thresh };
+
+                        const auto& t2_03{ t1_03 };
+                        t1_03 = load<T>(&pfp[frameIndex][x + 32]);
+                        diff03 = abs(c03 - t1_03);
+                        const auto check_v1_03{ diff03 < thresh&& abs(t1_03 - t2_03) < thresh };
+
+                        const auto& t2_04{ t1_04 };
+                        t1_04 = load<T>(&pfp[frameIndex][x + 48]);
+                        diff04 = abs(c04 - t1_04);
+                        const auto check_v1_04{ diff04 < thresh&& abs(t1_04 - t2_04) < thresh };
+
+                        weight01 = (useDiff) ? lookup<1792>((diff01 >> _shift) + v, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved);
+                        weight02 = (useDiff) ? lookup<1792>((diff02 >> _shift) + v, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved);
+                        weight03 = (useDiff) ? lookup<1792>((diff03 >> _shift) + v, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved);
+                        weight04 = (useDiff) ? lookup<1792>((diff04 >> _shift) + v, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved);
+
+                        weights01 = select(Vec16fb(check_v1_01), weights01 + weight01, weights01);
+                        weights02 = select(Vec16fb(check_v1_02), weights02 + weight02, weights02);
+                        weights03 = select(Vec16fb(check_v1_03), weights03 + weight03, weights03);
+                        weights04 = select(Vec16fb(check_v1_04), weights04 + weight04, weights04);
+
+                        sum01 = select(Vec16fb(check_v1_01), mul_add(to_float(load<T>(&srcp[frameIndex][x])), weight01, sum01), sum01);
+                        sum02 = select(Vec16fb(check_v1_02), mul_add(to_float(load<T>(&srcp[frameIndex][x + 16])), weight02, sum02), sum02);
+                        sum03 = select(Vec16fb(check_v1_03), mul_add(to_float(load<T>(&srcp[frameIndex][x + 32])), weight03, sum03), sum03);
+                        sum04 = select(Vec16fb(check_v1_04), mul_add(to_float(load<T>(&srcp[frameIndex][x + 48])), weight04, sum04), sum04);
+
+                        --frameIndex;
+                        v += 256;
+                    }
                 }
-            }
 
-            frameIndex = _maxr + 1;
+                frameIndex = _maxr + 1;
 
-            if (frameIndex < toFrame)
-            {
-                auto t1{ load<T>(&pfp[frameIndex][x]) };
-                auto diff{ abs(c - t1) };
-                const auto check_v{ diff < thresh };
-
-                Vec16f weight;
-                for (int i{ 0 }; i < 16; ++i)
-                    weight.insert(i, _weight[l][(useDiff) ? (diff.extract(i) >> _shift) : frameIndex]);
-
-                weights = select(Vec16fb(check_v), weights + weight, weights);
-                sum = select(Vec16fb(check_v), sum + to_float(load<T>(&srcp[frameIndex][x])) * weight, sum);
-
-                ++frameIndex;
-                int v{ 256 };
-
-                while (frameIndex < toFrame)
+                if (frameIndex < toFrame)
                 {
-                    const auto& t2{ t1 };
-                    t1 = load<T>(&pfp[frameIndex][x]);
-                    diff = abs(c - t1);
-                    const auto check_v1{ diff < thresh&& abs(t1 - t2) < thresh };
+                    auto t1_01{ load<T>(&pfp[frameIndex][x]) };
+                    auto diff01{ abs(c01 - t1_01) };
+                    const auto check_v01{ diff01 < thresh };
 
-                    Vec16f weight;
-                    for (int i{ 0 }; i < 16; ++i)
-                        weight.insert(i, _weight[l][(useDiff) ? ((diff.extract(i) >> _shift) + v) : frameIndex]);
+                    auto t1_02{ load<T>(&pfp[frameIndex][x + 16]) };
+                    auto diff02{ abs(c02 - t1_02) };
+                    const auto check_v02{ diff02 < thresh };
 
-                    weights = select(Vec16fb(check_v1), weights + weight, weights);
-                    sum = select(Vec16fb(check_v1), sum + to_float(load<T>(&srcp[frameIndex][x])) * weight, sum);
+                    auto t1_03{ load<T>(&pfp[frameIndex][x + 32]) };
+                    auto diff03{ abs(c03 - t1_03) };
+                    const auto check_v03{ diff03 < thresh };
+
+                    auto t1_04{ load<T>(&pfp[frameIndex][x + 48]) };
+                    auto diff04{ abs(c04 - t1_04) };
+                    const auto check_v04{ diff04 < thresh };
+
+                    auto weight01{ (useDiff) ? lookup<1792>(diff01 >> _shift, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved) };
+                    auto weight02{ (useDiff) ? lookup<1792>(diff02 >> _shift, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved) };
+                    auto weight03{ (useDiff) ? lookup<1792>(diff03 >> _shift, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved) };
+                    auto weight04{ (useDiff) ? lookup<1792>(diff04 >> _shift, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved) };
+
+                    weights01 = select(Vec16fb(check_v01), weights01 + weight01, weights01);
+                    weights02 = select(Vec16fb(check_v02), weights02 + weight02, weights02);
+                    weights03 = select(Vec16fb(check_v03), weights03 + weight03, weights03);
+                    weights04 = select(Vec16fb(check_v04), weights04 + weight04, weights04);
+
+                    sum01 = select(Vec16fb(check_v01), mul_add(to_float(load<T>(&srcp[frameIndex][x])), weight01, sum01), sum01);
+                    sum02 = select(Vec16fb(check_v02), mul_add(to_float(load<T>(&srcp[frameIndex][x + 16])), weight02, sum02), sum02);
+                    sum03 = select(Vec16fb(check_v03), mul_add(to_float(load<T>(&srcp[frameIndex][x + 32])), weight03, sum03), sum03);
+                    sum04 = select(Vec16fb(check_v04), mul_add(to_float(load<T>(&srcp[frameIndex][x + 48])), weight04, sum04), sum04);
 
                     ++frameIndex;
-                    v += 256;
+                    int v{ 256 };
+
+                    while (frameIndex < toFrame)
+                    {
+                        const auto& t2_01{ t1_01 };
+                        t1_01 = load<T>(&pfp[frameIndex][x]);
+                        diff01 = abs(c01 - t1_01);
+                        const auto check_v1_01{ diff01 < thresh&& abs(t1_01 - t2_01) < thresh };
+
+                        const auto& t2_02{ t1_02 };
+                        t1_02 = load<T>(&pfp[frameIndex][x + 16]);
+                        diff02 = abs(c02 - t1_02);
+                        const auto check_v1_02{ diff02 < thresh&& abs(t1_02 - t2_02) < thresh };
+
+                        const auto& t2_03{ t1_03 };
+                        t1_03 = load<T>(&pfp[frameIndex][x + 32]);
+                        diff03 = abs(c03 - t1_03);
+                        const auto check_v1_03{ diff03 < thresh&& abs(t1_03 - t2_03) < thresh };
+
+                        const auto& t2_04{ t1_04 };
+                        t1_04 = load<T>(&pfp[frameIndex][x + 48]);
+                        diff04 = abs(c04 - t1_04);
+                        const auto check_v1_04{ diff04 < thresh&& abs(t1_04 - t2_04) < thresh };
+
+                        weight01 = (useDiff) ? lookup<1792>((diff01 >> _shift) + v, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved);
+                        weight02 = (useDiff) ? lookup<1792>((diff02 >> _shift) + v, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved);
+                        weight03 = (useDiff) ? lookup<1792>((diff03 >> _shift) + v, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved);
+                        weight04 = (useDiff) ? lookup<1792>((diff04 >> _shift) + v, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved);
+
+                        weights01 = select(Vec16fb(check_v1_01), weights01 + weight01, weights01);
+                        weights02 = select(Vec16fb(check_v1_02), weights02 + weight02, weights02);
+                        weights03 = select(Vec16fb(check_v1_03), weights03 + weight03, weights03);
+                        weights04 = select(Vec16fb(check_v1_04), weights04 + weight04, weights04);
+
+                        sum01 = select(Vec16fb(check_v1_01), mul_add(to_float(load<T>(&srcp[frameIndex][x])), weight01, sum01), sum01);
+                        sum02 = select(Vec16fb(check_v1_02), mul_add(to_float(load<T>(&srcp[frameIndex][x + 16])), weight02, sum02), sum02);
+                        sum03 = select(Vec16fb(check_v1_03), mul_add(to_float(load<T>(&srcp[frameIndex][x + 32])), weight03, sum03), sum03);
+                        sum04 = select(Vec16fb(check_v1_04), mul_add(to_float(load<T>(&srcp[frameIndex][x + 48])), weight04, sum04), sum04);
+
+                        ++frameIndex;
+                        v += 256;
+                    }
+                }
+
+                if constexpr (fp)
+                {
+                    compress_saturated_s2u(compress_saturated(truncatei(mul_add(to_float(load<T>(&srcp[_maxr][x])), (1.0f - weights01), sum01 + 0.5f)), zero_si512()), zero_si512()).get_low().get_low().store(dstp + x);
+                    compress_saturated_s2u(compress_saturated(truncatei(mul_add(to_float(load<T>(&srcp[_maxr][x + 16])), (1.0f - weights02), sum02 + 0.5f)), zero_si512()), zero_si512()).get_low().get_low().store(dstp + (x + 16));
+                    compress_saturated_s2u(compress_saturated(truncatei(mul_add(to_float(load<T>(&srcp[_maxr][x + 32])), (1.0f - weights03), sum03 + 0.5f)), zero_si512()), zero_si512()).get_low().get_low().store(dstp + (x + 32));
+                    compress_saturated_s2u(compress_saturated(truncatei(mul_add(to_float(load<T>(&srcp[_maxr][x + 48])), (1.0f - weights04), sum04 + 0.5f)), zero_si512()), zero_si512()).get_low().get_low().store(dstp + (x + 48));
+                }
+                else
+                {
+                    compress_saturated_s2u(compress_saturated(truncatei(sum01 / weights01 + 0.5f), zero_si512()), zero_si512()).get_low().get_low().store(dstp + x);
+                    compress_saturated_s2u(compress_saturated(truncatei(sum02 / weights02 + 0.5f), zero_si512()), zero_si512()).get_low().get_low().store(dstp + (x + 16));
+                    compress_saturated_s2u(compress_saturated(truncatei(sum03 / weights03 + 0.5f), zero_si512()), zero_si512()).get_low().get_low().store(dstp + (x + 32));
+                    compress_saturated_s2u(compress_saturated(truncatei(sum04 / weights04 + 0.5f), zero_si512()), zero_si512()).get_low().get_low().store(dstp + (x + 48));
                 }
             }
 
-            if constexpr (std::is_same_v<T, uint8_t>)
+            for (int i{ 0 }; i < _diameter; ++i)
             {
-                if constexpr (fp)
-                    compress_saturated_s2u(compress_saturated(truncatei(to_float(load<T>(&srcp[_maxr][x])) * (1.0f - weights) + sum + 0.5f), zero_si512()), zero_si512()).get_low().get_low().store(dstp + x);
-                else
-                    compress_saturated_s2u(compress_saturated(truncatei(sum / weights + 0.5f), zero_si512()), zero_si512()).get_low().get_low().store(dstp + x);
+                srcp[i] += src_stride[i];
+                pfp[i] += pf_stride[i];
             }
-            else
-            {
-                if constexpr (fp)
-                    compress_saturated_s2u(truncatei(to_float(load<T>(&srcp[_maxr][x])) * (1.0f - weights) + sum + 0.5f), zero_si512()).get_low().store(dstp + x);
-                else
-                    compress_saturated_s2u(truncatei(sum / weights + 0.5f), zero_si512()).get_low().store(dstp + x);
-            }
-        }
 
-        for (int i{ 0 }; i < _diameter; ++i)
+            dstp += stride;
+        }
+    }
+    else
+    {
+        for (int y{ 0 }; y < height; ++y)
         {
-            srcp[i] += src_stride[i];
-            pfp[i] += pf_stride[i];
-        }
+            for (int x{ 0 }; x < width; x += 32)
+            {
+                const auto& c01{ load<T>(&pfp[_maxr][x]) };
+                const auto& srcp_v01{ load<T>(&srcp[_maxr][x]) };
 
-        dstp += stride;
+                const auto& c02{ load<T>(&pfp[_maxr][x + 16]) };
+                const auto& srcp_v02{ load<T>(&srcp[_maxr][x + 16]) };
+
+                Vec16f weights01{ _cw };
+                auto sum01{ to_float(srcp_v01) * weights01 };
+
+                Vec16f weights02{ _cw };
+                auto sum02{ to_float(srcp_v02) * weights02 };
+
+                int frameIndex{ _maxr - 1 };
+
+                if (frameIndex > fromFrame)
+                {
+                    auto t1_01{ load<T>(&pfp[frameIndex][x]) };
+                    auto diff01{ abs(c01 - t1_01) };
+                    const auto check_v01{ diff01 < thresh };
+
+                    auto t1_02{ load<T>(&pfp[frameIndex][x + 16]) };
+                    auto diff02{ abs(c02 - t1_02) };
+                    const auto check_v02{ diff02 < thresh };
+
+                    auto weight01{ (useDiff) ? lookup<1792>(diff01 >> _shift, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved) };
+                    auto weight02{ (useDiff) ? lookup<1792>(diff02 >> _shift, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved) };
+
+                    weights01 = select(Vec16fb(check_v01), weights01 + weight01, weights01);
+                    weights02 = select(Vec16fb(check_v02), weights02 + weight02, weights02);
+
+                    sum01 = select(Vec16fb(check_v01), mul_add(to_float(load<T>(&srcp[frameIndex][x])), weight01, sum01), sum01);
+                    sum02 = select(Vec16fb(check_v02), mul_add(to_float(load<T>(&srcp[frameIndex][x + 16])), weight02, sum02), sum02);
+
+                    --frameIndex;
+                    int v{ 256 };
+
+                    while (frameIndex > fromFrame)
+                    {
+                        const auto& t2_01{ t1_01 };
+                        t1_01 = load<T>(&pfp[frameIndex][x]);
+                        diff01 = abs(c01 - t1_01);
+                        const auto check_v1_01{ diff01 < thresh&& abs(t1_01 - t2_01) < thresh };
+
+                        const auto& t2_02{ t1_02 };
+                        t1_02 = load<T>(&pfp[frameIndex][x + 16]);
+                        diff02 = abs(c02 - t1_02);
+                        const auto check_v1_02{ diff02 < thresh&& abs(t1_02 - t2_02) < thresh };
+
+                        weight01 = (useDiff) ? lookup<1792>((diff01 >> _shift) + v, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved);
+                        weight02 = (useDiff) ? lookup<1792>((diff02 >> _shift) + v, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved);
+
+                        weights01 = select(Vec16fb(check_v1_01), weights01 + weight01, weights01);
+                        weights02 = select(Vec16fb(check_v1_02), weights02 + weight02, weights02);
+
+                        sum01 = select(Vec16fb(check_v1_01), mul_add(to_float(load<T>(&srcp[frameIndex][x])), weight01, sum01), sum01);
+                        sum02 = select(Vec16fb(check_v1_02), mul_add(to_float(load<T>(&srcp[frameIndex][x + 16])), weight02, sum02), sum02);
+
+                        --frameIndex;
+                        v += 256;
+                    }
+                }
+
+                frameIndex = _maxr + 1;
+
+                if (frameIndex < toFrame)
+                {
+                    auto t1_01{ load<T>(&pfp[frameIndex][x]) };
+                    auto diff01{ abs(c01 - t1_01) };
+                    const auto check_v01{ diff01 < thresh };
+
+                    auto t1_02{ load<T>(&pfp[frameIndex][x + 16]) };
+                    auto diff02{ abs(c02 - t1_02) };
+                    const auto check_v02{ diff02 < thresh };
+
+                    auto weight01{ (useDiff) ? lookup<1792>(diff01 >> _shift, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved) };
+                    auto weight02{ (useDiff) ? lookup<1792>(diff02 >> _shift, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved) };
+
+                    weights01 = select(Vec16fb(check_v01), weights01 + weight01, weights01);
+                    weights02 = select(Vec16fb(check_v02), weights02 + weight02, weights02);
+
+                    sum01 = select(Vec16fb(check_v01), mul_add(to_float(load<T>(&srcp[frameIndex][x])), weight01, sum01), sum01);
+                    sum02 = select(Vec16fb(check_v02), mul_add(to_float(load<T>(&srcp[frameIndex][x + 16])), weight02, sum02), sum02);
+
+                    ++frameIndex;
+                    int v{ 256 };
+
+                    while (frameIndex < toFrame)
+                    {
+                        const auto& t2_01{ t1_01 };
+                        t1_01 = load<T>(&pfp[frameIndex][x]);
+                        diff01 = abs(c01 - t1_01);
+                        const auto check_v1_01{ diff01 < thresh&& abs(t1_01 - t2_01) < thresh };
+
+                        const auto& t2_02{ t1_02 };
+                        t1_02 = load<T>(&pfp[frameIndex][x + 16]);
+                        diff02 = abs(c02 - t1_02);
+                        const auto check_v1_02{ diff02 < thresh&& abs(t1_02 - t2_02) < thresh };
+
+                        weight01 = (useDiff) ? lookup<1792>((diff01 >> _shift) + v, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved);
+                        weight02 = (useDiff) ? lookup<1792>((diff02 >> _shift) + v, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved);
+
+                        weights01 = select(Vec16fb(check_v1_01), weights01 + weight01, weights01);
+                        weights02 = select(Vec16fb(check_v1_02), weights02 + weight02, weights02);
+
+                        sum01 = select(Vec16fb(check_v1_01), mul_add(to_float(load<T>(&srcp[frameIndex][x])), weight01, sum01), sum01);
+                        sum02 = select(Vec16fb(check_v1_02), mul_add(to_float(load<T>(&srcp[frameIndex][x + 16])), weight02, sum02), sum02);
+
+                        ++frameIndex;
+                        v += 256;
+                    }
+                }
+
+                if constexpr (fp)
+                {
+                    compress_saturated_s2u(truncatei(mul_add(to_float(load<T>(&srcp[_maxr][x])), (1.0f - weights01), sum01 + 0.5f)), zero_si512()).get_low().store(dstp + x);
+                    compress_saturated_s2u(truncatei(mul_add(to_float(load<T>(&srcp[_maxr][x + 16])), (1.0f - weights02), sum02 + 0.5f)), zero_si512()).get_low().store(dstp + (x + 16));
+                }
+                else
+                {
+                    compress_saturated_s2u(truncatei(sum01 / weights01 + 0.5f), zero_si512()).get_low().store(dstp + x);
+                    compress_saturated_s2u(truncatei(sum02 / weights02 + 0.5f), zero_si512()).get_low().store(dstp + (x + 16));
+                }
+            }
+
+            for (int i{ 0 }; i < _diameter; ++i)
+            {
+                srcp[i] += src_stride[i];
+                pfp[i] += pf_stride[i];
+            }
+
+            dstp += stride;
+        }
     }
 }
 
@@ -185,6 +432,7 @@ void TTempSmooth<pfclip, fp>::filterF_avx512(PVideoFrame src[15], PVideoFrame pf
     float* __restrict dstp{ reinterpret_cast<float*>(dst->GetWritePtr(plane)) };
 
     const int l{ plane >> 1 };
+    const float* const weightSaved{ _weight[l].data() };
     const Vec16f thresh{ _threshF[l] };
 
     for (int y{ 0 }; y < height; ++y)
@@ -195,7 +443,7 @@ void TTempSmooth<pfclip, fp>::filterF_avx512(PVideoFrame src[15], PVideoFrame pf
             const auto& srcp_v{ Vec16f().load(&srcp[_maxr][x]) };
 
             Vec16f weights{ _cw };
-            Vec16f sum{ srcp_v * weights };
+            auto sum{ srcp_v * weights };
 
             int frameIndex{ _maxr - 1 };
 
@@ -205,12 +453,9 @@ void TTempSmooth<pfclip, fp>::filterF_avx512(PVideoFrame src[15], PVideoFrame pf
                 auto diff{ min(abs(c - t1), 1.0f) };
                 const auto check_v{ diff < thresh };
 
-                Vec16f weight;
-                for (int i{ 0 }; i < 16; ++i)
-                    weight.insert(i, _weight[l][(useDiff) ? static_cast<int>(diff.extract(i) * 255.0f) : frameIndex]);
-
+                auto weight{ (useDiff) ? lookup<1792>(truncatei(diff * 255.0f), weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved) };
                 weights = select(check_v, weights + weight, weights);
-                sum = select(check_v, sum + Vec16f().load(&srcp[frameIndex][x]) * weight, sum);
+                sum = select(check_v, mul_add(Vec16f().load(&srcp[frameIndex][x]), weight, sum), sum);
 
                 --frameIndex;
                 int v{ 256 };
@@ -222,12 +467,9 @@ void TTempSmooth<pfclip, fp>::filterF_avx512(PVideoFrame src[15], PVideoFrame pf
                     diff = min(abs(c - t1), 1.0f);
                     const auto check_v1{ diff < thresh&& min(abs(t1 - t2), 1.0f) < thresh };
 
-                    Vec16f weight;
-                    for (int i{ 0 }; i < 16; ++i)
-                        weight.insert(i, _weight[l][(useDiff) ? (static_cast<int>(diff.extract(i) * 255.0f) + v) : frameIndex]);
-
-                    weights = select(Vec16fb(check_v1), weights + weight, weights);
-                    sum = select(Vec16fb(check_v1), sum + Vec16f().load(&srcp[frameIndex][x]) * weight, sum);
+                    weight = (useDiff) ? lookup<1792>(truncatei(diff * 255.0f) + v, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved);
+                    weights = select(check_v1, weights + weight, weights);
+                    sum = select(check_v1, mul_add(Vec16f().load(&srcp[frameIndex][x]), weight, sum), sum);
 
                     --frameIndex;
                     v += 256;
@@ -242,12 +484,9 @@ void TTempSmooth<pfclip, fp>::filterF_avx512(PVideoFrame src[15], PVideoFrame pf
                 auto diff{ min(abs(c - t1), 1.0f) };
                 const auto check_v{ diff < thresh };
 
-                Vec16f weight;
-                for (int i{ 0 }; i < 16; ++i)
-                    weight.insert(i, _weight[l][(useDiff) ? static_cast<int>(diff.extract(i) * 255.0f) : frameIndex]);
-
+                auto weight{ (useDiff) ? lookup<1792>(truncatei(diff * 255.0f), weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved) };
                 weights = select(check_v, weights + weight, weights);
-                sum = select(check_v, sum + Vec16f().load(&srcp[frameIndex][x]) * weight, sum);
+                sum = select(check_v, mul_add(Vec16f().load(&srcp[frameIndex][x]), weight, sum), sum);
 
                 ++frameIndex;
                 int v{ 256 };
@@ -259,12 +498,9 @@ void TTempSmooth<pfclip, fp>::filterF_avx512(PVideoFrame src[15], PVideoFrame pf
                     diff = min(abs(c - t1), 1.0f);
                     const auto check_v1{ diff < thresh&& min(abs(t1 - t2), 1.0f) < thresh };
 
-                    Vec16f weight;
-                    for (int i{ 0 }; i < 16; ++i)
-                        weight.insert(i, _weight[l][(useDiff) ? (static_cast<int>(diff.extract(i) * 255.0f) + v) : frameIndex]);
-
-                    weights = select(Vec16fb(check_v1), weights + weight, weights);
-                    sum = select(Vec16fb(check_v1), sum + Vec16f().load(&srcp[frameIndex][x]) * weight, sum);
+                    weight = (useDiff) ? lookup<1792>(truncatei(diff * 255.0f) + v, weightSaved) : lookup<1792>(Vec16i(frameIndex), weightSaved);
+                    weights = select(check_v1, weights + weight, weights);
+                    sum = select(check_v1, mul_add(Vec16f().load(&srcp[frameIndex][x]), weight, sum), sum);
 
                     ++frameIndex;
                     v += 256;
@@ -272,7 +508,7 @@ void TTempSmooth<pfclip, fp>::filterF_avx512(PVideoFrame src[15], PVideoFrame pf
             }
 
             if constexpr (fp)
-                (Vec16f().load(&srcp[_maxr][x]) * (1.0f - weights) + sum).store(dstp + x);
+                mul_add(Vec16f().load(&srcp[_maxr][x]), (1.0f - weights), sum).store(dstp + x);
             else
                 (sum / weights).store(dstp + x);
         }

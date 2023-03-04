@@ -1,3 +1,6 @@
+##### 1.2.3:
+    Improved SIMD code. (@DTL2020)
+
 ##### 1.2.2:
     Fixed used frames for scene change detection.
     Fixed memory allocation for inverse pixel difference weighting.
