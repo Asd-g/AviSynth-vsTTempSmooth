@@ -84,10 +84,10 @@ void TTempSmooth<pfclip, fp>::filterI_sse2(PVideoFrame src[15], PVideoFrame pf[1
                     auto diff04{ abs(c04 - t1_04) };
                     const auto check_v04{ diff04 < thresh };
 
-                    auto weight01{ (useDiff) ? lookup<1792>(diff01 >> _shift, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved) };
-                    auto weight02{ (useDiff) ? lookup<1792>(diff02 >> _shift, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved) };
-                    auto weight03{ (useDiff) ? lookup<1792>(diff03 >> _shift, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved) };
-                    auto weight04{ (useDiff) ? lookup<1792>(diff04 >> _shift, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved) };
+                    auto weight01{ (useDiff) ? lookup<1792>(diff01 >> _shift, weightSaved) : weightSaved[frameIndex] };
+                    auto weight02{ (useDiff) ? lookup<1792>(diff02 >> _shift, weightSaved) : weightSaved[frameIndex] };
+                    auto weight03{ (useDiff) ? lookup<1792>(diff03 >> _shift, weightSaved) : weightSaved[frameIndex] };
+                    auto weight04{ (useDiff) ? lookup<1792>(diff04 >> _shift, weightSaved) : weightSaved[frameIndex] };
 
                     weights01 = select(Vec4fb(check_v01), weights01 + weight01, weights01);
                     weights02 = select(Vec4fb(check_v02), weights02 + weight02, weights02);
@@ -124,10 +124,10 @@ void TTempSmooth<pfclip, fp>::filterI_sse2(PVideoFrame src[15], PVideoFrame pf[1
                         diff04 = abs(c04 - t1_04);
                         const auto check_v1_04{ diff04 < thresh&& abs(t1_04 - t2_04) < thresh };
 
-                        weight01 = (useDiff) ? lookup<1792>((diff01 >> _shift) + v, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved);
-                        weight02 = (useDiff) ? lookup<1792>((diff02 >> _shift) + v, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved);
-                        weight03 = (useDiff) ? lookup<1792>((diff03 >> _shift) + v, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved);
-                        weight04 = (useDiff) ? lookup<1792>((diff04 >> _shift) + v, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved);
+                        weight01 = (useDiff) ? lookup<1792>((diff01 >> _shift) + v, weightSaved) : weightSaved[frameIndex];
+                        weight02 = (useDiff) ? lookup<1792>((diff02 >> _shift) + v, weightSaved) : weightSaved[frameIndex];
+                        weight03 = (useDiff) ? lookup<1792>((diff03 >> _shift) + v, weightSaved) : weightSaved[frameIndex];
+                        weight04 = (useDiff) ? lookup<1792>((diff04 >> _shift) + v, weightSaved) : weightSaved[frameIndex];
 
                         weights01 = select(Vec4fb(check_v1_01), weights01 + weight01, weights01);
                         weights02 = select(Vec4fb(check_v1_02), weights02 + weight02, weights02);
@@ -164,10 +164,10 @@ void TTempSmooth<pfclip, fp>::filterI_sse2(PVideoFrame src[15], PVideoFrame pf[1
                     auto diff04{ abs(c04 - t1_04) };
                     const auto check_v04{ diff04 < thresh };
 
-                    auto weight01{ (useDiff) ? lookup<1792>(diff01 >> _shift, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved) };
-                    auto weight02{ (useDiff) ? lookup<1792>(diff02 >> _shift, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved) };
-                    auto weight03{ (useDiff) ? lookup<1792>(diff03 >> _shift, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved) };
-                    auto weight04{ (useDiff) ? lookup<1792>(diff04 >> _shift, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved) };
+                    auto weight01{ (useDiff) ? lookup<1792>(diff01 >> _shift, weightSaved) : weightSaved[frameIndex] };
+                    auto weight02{ (useDiff) ? lookup<1792>(diff02 >> _shift, weightSaved) : weightSaved[frameIndex] };
+                    auto weight03{ (useDiff) ? lookup<1792>(diff03 >> _shift, weightSaved) : weightSaved[frameIndex] };
+                    auto weight04{ (useDiff) ? lookup<1792>(diff04 >> _shift, weightSaved) : weightSaved[frameIndex] };
 
                     weights01 = select(Vec4fb(check_v01), weights01 + weight01, weights01);
                     weights02 = select(Vec4fb(check_v02), weights02 + weight02, weights02);
@@ -204,10 +204,10 @@ void TTempSmooth<pfclip, fp>::filterI_sse2(PVideoFrame src[15], PVideoFrame pf[1
                         diff04 = abs(c04 - t1_04);
                         const auto check_v1_04{ diff04 < thresh&& abs(t1_04 - t2_04) < thresh };
 
-                        weight01 = (useDiff) ? lookup<1792>((diff01 >> _shift) + v, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved);
-                        weight02 = (useDiff) ? lookup<1792>((diff02 >> _shift) + v, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved);
-                        weight03 = (useDiff) ? lookup<1792>((diff03 >> _shift) + v, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved);
-                        weight04 = (useDiff) ? lookup<1792>((diff04 >> _shift) + v, weightSaved) : lookup<1792>(Vec4i(frameIndex), weightSaved);
+                        weight01 = (useDiff) ? lookup<1792>((diff01 >> _shift) + v, weightSaved) : weightSaved[frameIndex];
+                        weight02 = (useDiff) ? lookup<1792>((diff02 >> _shift) + v, weightSaved) : weightSaved[frameIndex];
+                        weight03 = (useDiff) ? lookup<1792>((diff03 >> _shift) + v, weightSaved) : weightSaved[frameIndex];
+                        weight04 = (useDiff) ? lookup<1792>((diff04 >> _shift) + v, weightSaved) : weightSaved[frameIndex];
 
                         weights01 = select(Vec4fb(check_v1_01), weights01 + weight01, weights01);
                         weights02 = select(Vec4fb(check_v1_02), weights02 + weight02, weights02);
