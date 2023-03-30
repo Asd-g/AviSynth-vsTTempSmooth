@@ -1,7 +1,6 @@
 #include "VCL2/vectorclass.h"
 #include "vsTTempSmooth.h"
 
-
 template <typename T>
 AVS_FORCEINLINE static Vec16i load(const void* p)
 {
