@@ -84,10 +84,33 @@ vsTTempSmooth(clip, int "ythresh", int "uthresh", int "vthresh", int "ymdiff", b
 - pfclip\
     This allows you to specify a separate clip for TTempSmooth to use when calculating pixel differences. This applies to checking the motion thresholds, calculating inverse difference weights, and detecting scenechanges. Basically, the pfclip will be used to determine the weights in the average but the weights will be applied to the original input clip's pixel values.
 
-- Sets which cpu optimizations to use.\
+- opt\
+    Sets which cpu optimizations to use.\
     -1: Auto-detect.\
     0: Use C++ code.\
     1: Use SSE2 code.\
     2: Use AVX2 code.\
     3: Use AVX-512 code.\
     Default: -1.
+
+### Building:
+
+- Windows\
+    Use solution files.
+
+- Linux
+    ```
+    Requirements:
+        - Git
+        - C++17 compiler
+        - CMake >= 3.16
+    ```
+    ```
+    git clone https://github.com/Asd-g/AviSynth-vsTTempSmooth && \
+    cd AviSynth-vsTTempSmooth && \
+    mkdir build && \
+    cd build && \
+    cmake .. && \
+    make -j$(nproc) && \
+    sudo make install
+    ```
