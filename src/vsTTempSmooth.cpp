@@ -272,6 +272,12 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
 	if ((plane >> 1) == 1) pMem = pIIRMemU;
 	if ((plane >> 1) == 2) pMem = pIIRMemV;
 
+	int* pMemSum;
+	if ((plane >> 1) == 0) pMemSum = pMinSumMemY;
+	if ((plane >> 1) == 1) pMemSum = pMinSumMemU;
+	if ((plane >> 1) == 2) pMemSum = pMinSumMemV;
+
+
 	for (int i{ 0 }; i < _diameter; ++i)
 	{
 		src_stride[i] = src[i]->GetPitch(plane);
@@ -402,7 +408,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
 				// IIR - check if memory sample is still good
 				int idm_mem = INTABS(*best_data_ptr - pMem[x]);
 
-				if (idm_mem < thUPD)
+				if ((idm_mem < thUPD) && (i_sum_minrow > pMemSum[x]) )
 				{
 					//mem still good - output mem block
 					best_data_ptr = &pMem[x];
@@ -414,6 +420,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
 				else // mem no good - update mem
 				{
 					pMem[x] = *best_data_ptr;
+					pMemSum[x] = i_sum_minrow;
 
 #ifdef _DEBUG
 					iMEL_mem_updates++;
@@ -439,6 +446,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
 
 		dstp += stride;
 		pMem += width;// mem_stride; ??
+		pMemSum += width;
 	}
 
 #ifdef _DEBUG
@@ -542,20 +550,47 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
 	pIIRMemY = 0;
 	pIIRMemU = 0;
 	pIIRMemV = 0;
+	pMinSumMemY = 0;
+	pMinSumMemU = 0;
+	pMinSumMemV = 0;
 
 	if (_thUPD[0] > 0)
 	{
 		pIIRMemY = (uint8_t*)malloc(vi_src.width * vi_src.height * vi_src.ComponentSize());
+		pMinSumMemY = (int*)malloc(vi_src.width* vi_src.height * sizeof(int));
+		if (vi_src.ComponentSize() == 1)
+			memset(pMinSumMemY, 255, vi_src.width * vi_src.height);
+		else if (vi_src.ComponentSize() == 2)
+			memset(pMinSumMemY, 65535, vi_src.width * vi_src.height);
+		else
+			memset(pMinSumMemY, 65535, vi_src.width * vi_src.height); // ? 2.0f ?
+
 	}
 
 	if (_thUPD[1] > 0)
 	{
 		pIIRMemU = (uint8_t*)malloc(vi_src.width * vi_src.height * vi_src.ComponentSize());
+		pMinSumMemU = (int*)malloc(vi_src.width * vi_src.height * sizeof(int));
+		if (vi_src.ComponentSize() == 1)
+			memset(pMinSumMemU, 255, vi_src.width * vi_src.height);
+		else if (vi_src.ComponentSize() == 2)
+			memset(pMinSumMemU, 65535, vi_src.width * vi_src.height);
+		else
+			memset(pMinSumMemU, 65535, vi_src.width * vi_src.height); // ? 2.0f ?
+
 	}
 
 	if (_thUPD[2] > 0)
 	{
 		pIIRMemV = (uint8_t*)malloc(vi_src.width * vi_src.height * vi_src.ComponentSize());
+		pMinSumMemV = (int*)malloc(vi_src.width * vi_src.height * sizeof(int));
+		if (vi_src.ComponentSize() == 1)
+			memset(pMinSumMemV, 255, vi_src.width * vi_src.height);
+		else if (vi_src.ComponentSize() == 2)
+			memset(pMinSumMemV, 65535, vi_src.width * vi_src.height);
+		else
+			memset(pMinSumMemV, 65535, vi_src.width * vi_src.height); // ? 2.0f ?
+
 	}
 
 
@@ -697,9 +732,43 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
 template <bool pfclip, bool fp>
 TTempSmooth<pfclip, fp>::~TTempSmooth(void)
 {
-	if (pIIRMemY) free(pIIRMemY);
-	if (pIIRMemU) free(pIIRMemU);
-	if (pIIRMemV) free(pIIRMemV);
+	if (pIIRMemY != 0 )
+	{
+		free(pIIRMemY);
+		pIIRMemY = 0;
+	}
+
+	if (pIIRMemU != 0)
+	{
+		free(pIIRMemU);
+		pIIRMemU = 0;
+	}
+
+	if (pIIRMemV != 0)
+	{
+		free(pIIRMemV);
+		pIIRMemV = 0;
+	}
+
+	if (pMinSumMemY != 0)
+	{
+		free(pMinSumMemY);
+		pMinSumMemY = 0;
+	}
+
+	if (pMinSumMemU != 0)
+	{
+		free(pMinSumMemU);
+		pMinSumMemU = 0;
+	}
+
+	if (pMinSumMemV != 0)
+	{
+		free(pMinSumMemV);
+		pMinSumMemV = 0;
+	}
+
+
 }
 
 template <bool pfclip, bool fp>
