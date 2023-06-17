@@ -314,26 +314,26 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
 						continue;
 					}
 
-					// 0 is current src sample ? 1,2,3,4,... -1, +1, -2, +2, samples in total tr-pool ?
+					// _maxr is current sample, 0,1,2... is -maxr, ... +maxr
 					uint8_t* row_data_ptr;
 					uint8_t* col_data_ptr;
 
-					if (dmt_row == 0) // src sample
+					if (dmt_row == _maxr) // src sample
 					{
 						row_data_ptr = (uint8_t*)&pfp[_maxr][x];
 					}
 					else // ref block
 					{
-						row_data_ptr = (uint8_t*)&srcp[dmt_row - 1][x]; // -1 ???
+						row_data_ptr = (uint8_t*)&srcp[dmt_row][x]; 
 					}
 
-					if (dmt_col == 0) // src sample
+					if (dmt_col == _maxr) // src sample
 					{
 						col_data_ptr = (uint8_t*)&pfp[_maxr][x];
 					}
 					else // ref block
 					{
-						col_data_ptr = (uint8_t*)&srcp[dmt_col - 1][x];
+						col_data_ptr = (uint8_t*)&srcp[dmt_col][x];
 					}
 
 
@@ -389,14 +389,16 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
 			// set block of idx_minrow as output block
 			const BYTE* best_data_ptr;
 
-			if (i_idx_minrow == 0) // src sample
+//			if (i_idx_minrow == 0) // src sample
+			if (i_idx_minrow == _maxr) // src sample
 			{
 				best_data_ptr = &pfp[_maxr][x];
 
 			}
 			else // ref sample
 			{
-				best_data_ptr = &srcp[i_idx_minrow - 1][x];
+//				best_data_ptr = &srcp[i_idx_minrow - 1][x];
+				best_data_ptr = &srcp[i_idx_minrow][x];
 
 #ifdef _DEBUG
 				iMEL_non_current_samples++;
