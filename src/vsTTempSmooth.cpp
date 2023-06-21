@@ -494,9 +494,9 @@ static float ComparePlane(PVideoFrame& src, PVideoFrame& src1, const int bits_pe
 }
 
 template <bool pfclip, bool fp>
-TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, IScriptEnvironment* env)
+TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew, int vpnew, IScriptEnvironment* env)
 	: GenericVideoFilter(_child), _maxr(maxr), _scthresh(scthresh), _diameter(maxr * 2 + 1), _thresh{ ythresh, uthresh, vthresh }, _mdiff{ ymdiff, umdiff, vmdiff }, _shift(vi.BitsPerComponent() - 8), _threshF{ 0.0f, 0.0f, 0.0f },
-	_cw(0.0f), _pfclip(pfclip_), _opt(opt), _pmode(pmode), _thUPD{ ythupd, uthupd, vthupd }
+	_cw(0.0f), _pfclip(pfclip_), _opt(opt), _pmode(pmode), _thUPD{ ythupd, uthupd, vthupd }, _pnew{ ypnew, upnew, vpnew}
 {
 	has_at_least_v8 = env->FunctionExists("propShow");
 
@@ -946,7 +946,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
 
 AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvironment* env)
 {
-	enum { Clip, Maxr, Ythresh, Uthresh, Vthresh, Ymdiff, Umdiff, Vmdiff, Strength, Scthresh, Fp, Y, U, V, Pfclip, Opt, pmode, YthUPD, UthUPD, VthUPD };
+	enum { Clip, Maxr, Ythresh, Uthresh, Vthresh, Ymdiff, Umdiff, Vmdiff, Strength, Scthresh, Fp, Y, U, V, Pfclip, Opt, pmode, YthUPD, UthUPD, VthUPD, Ypnew, Upnew, Vpnew };
 
 	PClip pfclip{ (args[Pfclip].Defined() ? args[Pfclip].AsClip() : nullptr) };
 	const bool fp{ args[Fp].AsBool(true) };
@@ -974,6 +974,9 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
 				args[YthUPD].AsInt(0),
 				args[UthUPD].AsInt(0),
 				args[VthUPD].AsInt(0),
+				args[Ypnew].AsInt(0),
+				args[Upnew].AsInt(0),
+				args[Vpnew].AsInt(0),
 				env);
 		else
 			return new TTempSmooth<true, false>(
@@ -996,6 +999,9 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
 				args[YthUPD].AsInt(0),
 				args[UthUPD].AsInt(0),
 				args[VthUPD].AsInt(0),
+				args[Ypnew].AsInt(0),
+				args[Upnew].AsInt(0),
+				args[Vpnew].AsInt(0),
 				env);
 	}
 	else
@@ -1021,6 +1027,9 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
 				args[YthUPD].AsInt(0),
 				args[UthUPD].AsInt(0),
 				args[VthUPD].AsInt(0),
+				args[Ypnew].AsInt(0),
+				args[Upnew].AsInt(0),
+				args[Vpnew].AsInt(0),
 				env);
 		else
 			return new TTempSmooth<false, false>(
@@ -1043,6 +1052,9 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
 				args[YthUPD].AsInt(0),
 				args[UthUPD].AsInt(0),
 				args[VthUPD].AsInt(0),
+				args[Ypnew].AsInt(0),
+				args[Upnew].AsInt(0),
+				args[Vpnew].AsInt(0),
 				env);
 	}
 }
@@ -1054,6 +1066,6 @@ const char* __stdcall AvisynthPluginInit3(IScriptEnvironment * env, const AVS_Li
 {
 	AVS_linkage = vectors;
 
-	env->AddFunction("vsTTempSmooth", "c[maxr]i[ythresh]i[uthresh]i[vthresh]i[ymdiff]i[umdiff]i[vmdiff]i[strength]i[scthresh]f[fp]b[y]i[u]i[v]i[pfclip]c[opt]i[pmode]i[ythupd]i[uthupd]i[vthupd]i", Create_TTempSmooth, 0);
+	env->AddFunction("vsTTempSmooth", "c[maxr]i[ythresh]i[uthresh]i[vthresh]i[ymdiff]i[umdiff]i[vmdiff]i[strength]i[scthresh]f[fp]b[y]i[u]i[v]i[pfclip]c[opt]i[pmode]i[ythupd]i[uthupd]i[vthupd]i[ypnew]i[upnew]i[vpnew]i", Create_TTempSmooth, 0);
 	return "vsTTempSmooth";
 }
