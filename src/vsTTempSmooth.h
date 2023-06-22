@@ -6,7 +6,7 @@
 
 #include "include\avisynth.h"
 
-#define MAX_TEMP_RAD 7
+#define MAX_TEMP_RAD 7 // max limited by 8bit in __m256i ymm_sum_minrow = _mm256_set1_epi16((short)iMaxSumDM); is 63 now ?
 
 template<bool pfclip, bool fp>
 class TTempSmooth : public GenericVideoFilter
@@ -59,6 +59,7 @@ class TTempSmooth : public GenericVideoFilter
     float (*compare)(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
 
 	void filterI_mode2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+	void filterI_mode2_avx2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 
 
 #ifdef _DEBUG
@@ -87,3 +88,6 @@ template <typename T>
 float ComparePlane_avx2(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
 template <typename T>
 float ComparePlane_avx512(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
+
+// need forceinline ?
+unsigned int INTABS(int x);
