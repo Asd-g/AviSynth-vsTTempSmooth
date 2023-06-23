@@ -492,7 +492,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C_uint8(PVideoFrame src[15], PVideoF
 				// IIR - check if memory sample is still good
 				int idm_mem = INTABS(*best_data_ptr - pMem[x]);
 
-				if ( (idm_mem < thUPD) && ((i_sum_minrow + pnew) >= pMemSum[x]) ) 
+				if ( (idm_mem < thUPD) && ((i_sum_minrow + pnew) > pMemSum[x]) ) 
 				{
 					//mem still good - output mem block
 					best_data_ptr = &pMem[x];
@@ -657,7 +657,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C_uint16(PVideoFrame src[15], PVideo
 				// IIR - check if memory sample is still good
 				int idm_mem = INTABS(*best_data_ptr - pMem[x]);
 
-				if ((idm_mem < thUPD) && ((i_sum_minrow + pnew) >= pMemSum[x]))
+				if ((idm_mem < thUPD) && ((i_sum_minrow + pnew) > pMemSum[x]))
 				{
 					//mem still good - output mem block
 					best_data_ptr = &pMem[x];
@@ -1021,11 +1021,13 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
 	PVideoFrame src[MAX_TEMP_RAD * 2 + 1] = {};
 	PVideoFrame pf[MAX_TEMP_RAD * 2 + 1] = {};
 
+#ifdef _DEBUG
 	//DEBUG
 	if (n == 3)
 	{
 		int idbr = 1;
 	}
+#endif
 
 	for (int i{ n - _maxr }; i <= n + _maxr; ++i)
 	{
