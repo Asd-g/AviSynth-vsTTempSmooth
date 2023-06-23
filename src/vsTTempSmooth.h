@@ -61,6 +61,7 @@ class TTempSmooth : public GenericVideoFilter
 	void filterI_mode2_C_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 	void filterI_mode2_C_uint16(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 	void filterI_mode2_avx2_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+	void filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 	void filterI_mode2_avx2_uint16(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 
 
