@@ -731,14 +731,14 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_uint8(PVideoFrame src[15], PVid
 					}
 				}
 
-				// check if best is below thresh-difference from current
-				if (INTABS(*best_data_ptr - srcp[_maxr][x + sub_x]) < thresh)
+				// check if best is below thresh-difference from current src
+				if (INTABS(*best_data_ptr - pfp[_maxr][x + sub_x]) < thresh)
 				{
 					dstp[x + sub_x] = *best_data_ptr;
 				}
 				else
 				{
-					dstp[x + sub_x] = srcp[_maxr][x + sub_x];
+					dstp[x + sub_x] = pfp[_maxr][x + sub_x];
 				}
 			}
 
@@ -775,11 +775,10 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PV
 
 	int DM_table[MAX_TEMP_RAD * 2 + 1][MAX_TEMP_RAD * 2 + 1];
 #define SIMD_AVX2_SPP 32
-	int alignas(32) Temp[(MAX_TEMP_RAD * 2 + 1) * SIMD_AVX2_SPP + SIMD_AVX2_SPP * 2];
+//	int alignas(32) Temp[(MAX_TEMP_RAD * 2 + 1) * SIMD_AVX2_SPP + SIMD_AVX2_SPP * 2];
 
-	// make temp ptr 32-bytes aligned
-	int* pTemp = &Temp[0];
-
+	__m256i alignas(32) Temp256[(MAX_TEMP_RAD * 2 + 1) * 4]; 
+	__m256i* pTemp256 = &Temp256[0];
 
 	int src_stride[15]{};
 	int pf_stride[15]{};
@@ -866,10 +865,10 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PV
 				ymm_h8_1 = _mm256_unpacklo_epi16(ymm_h8_1, ymm_zero);
 				ymm_h8_2 = _mm256_unpacklo_epi16(ymm_h8_2, ymm_zero);
 
-				_mm256_store_si256((__m256i*)(pTemp + (8 * 4) * i), ymm_l8_1);
-				_mm256_store_si256((__m256i*)(pTemp + (8 * 4) * i + 8), ymm_l8_2);
-				_mm256_store_si256((__m256i*)(pTemp + (8 * 4) * i + 16), ymm_h8_1);
-				_mm256_store_si256((__m256i*)(pTemp + (8 * 4) * i + 24), ymm_h8_2);
+				_mm256_store_si256(pTemp256 + i * 4 + 0, ymm_l8_1);
+				_mm256_store_si256(pTemp256 + i * 4 + 1, ymm_l8_2);
+				_mm256_store_si256(pTemp256 + i * 4 + 2, ymm_h8_1);
+				_mm256_store_si256(pTemp256 + i * 4 + 3, ymm_h8_2);
 
 			}
 
@@ -904,41 +903,34 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PV
 				for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
 				{
 					if (dmt_row == dmt_col)
-					{ // block with itself => DM=0
+					{ // samples with itselves => DM=0
 						continue;
 					}
+					__m256i* row_data_ptr = &pTemp256[dmt_row * 4];
+					__m256i* col_data_ptr = &pTemp256[dmt_col * 4];
 
-					int* row_data_ptr = &pTemp[dmt_row * (4 * 8)];
-					int* col_data_ptr = &pTemp[dmt_col * (4 * 8)];
+					ymm_row_l8_1 = _mm256_load_si256(row_data_ptr + 0);
+					ymm_row_l8_2 = _mm256_load_si256(row_data_ptr + 1); 
+					ymm_row_h8_1 = _mm256_load_si256(row_data_ptr + 2);
+					ymm_row_h8_2 = _mm256_load_si256(row_data_ptr + 3);
 
-					ymm_row_l8_1 = _mm256_load_si256((const __m256i*)(row_data_ptr));
-					ymm_row_l8_2 = _mm256_load_si256((const __m256i*)(row_data_ptr + 8)); // int_ptr
-
-					ymm_row_h8_1 = _mm256_load_si256((const __m256i*)(row_data_ptr + 16));
-					ymm_row_h8_2 = _mm256_load_si256((const __m256i*)(row_data_ptr + 24));
-
-					ymm_col_l8_1 = _mm256_load_si256((const __m256i*)(col_data_ptr));
-					ymm_col_l8_2 = _mm256_load_si256((const __m256i*)(col_data_ptr + 8));
-
-					ymm_col_h8_1 = _mm256_load_si256((const __m256i*)(col_data_ptr + 16));
-					ymm_col_h8_2 = _mm256_load_si256((const __m256i*)(col_data_ptr + 24));
-
+					ymm_col_l8_1 = _mm256_load_si256(col_data_ptr + 0);
+					ymm_col_l8_2 = _mm256_load_si256(col_data_ptr + 1);
+					ymm_col_h8_1 = _mm256_load_si256(col_data_ptr + 2);
+					ymm_col_h8_2 = _mm256_load_si256(col_data_ptr + 3);
 
 					__m256i ymm_subtr_l8_1 = _mm256_sub_epi32(ymm_row_l8_1, ymm_col_l8_1);
 					__m256i ymm_subtr_l8_2 = _mm256_sub_epi32(ymm_row_l8_2, ymm_col_l8_2);
-
 					__m256i ymm_subtr_h8_1 = _mm256_sub_epi32(ymm_row_h8_1, ymm_col_h8_1);
 					__m256i ymm_subtr_h8_2 = _mm256_sub_epi32(ymm_row_h8_2, ymm_col_h8_2);
 
 					__m256i ymm_abs_l8_1 = _mm256_abs_epi32(ymm_subtr_l8_1);
 					__m256i ymm_abs_l8_2 = _mm256_abs_epi32(ymm_subtr_l8_2);
-
 					__m256i ymm_abs_h8_1 = _mm256_abs_epi32(ymm_subtr_h8_1);
 					__m256i ymm_abs_h8_2 = _mm256_abs_epi32(ymm_subtr_h8_2);
 
 					ymm_sum_row_l8_1 = _mm256_add_epi32(ymm_sum_row_l8_1, ymm_abs_l8_1);
 					ymm_sum_row_l8_2 = _mm256_add_epi32(ymm_sum_row_l8_2, ymm_abs_l8_2);
-
 					ymm_sum_row_h8_1 = _mm256_add_epi32(ymm_sum_row_h8_1, ymm_abs_h8_1);
 					ymm_sum_row_h8_2 = _mm256_add_epi32(ymm_sum_row_h8_2, ymm_abs_h8_2);
 
@@ -946,7 +938,6 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PV
 
 				__m256i ymm_mask_gt_l8_1 = _mm256_cmpgt_epi32(ymm_sum_minrow_l8_1, ymm_sum_row_l8_1);
 				__m256i ymm_mask_gt_l8_2 = _mm256_cmpgt_epi32(ymm_sum_minrow_l8_2, ymm_sum_row_l8_2);
-
 				__m256i ymm_mask_gt_h8_1 = _mm256_cmpgt_epi32(ymm_sum_minrow_h8_1, ymm_sum_row_h8_1);
 				__m256i ymm_mask_gt_h8_2 = _mm256_cmpgt_epi32(ymm_sum_minrow_h8_2, ymm_sum_row_h8_2);
 
@@ -954,63 +945,107 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PV
 
 				ymm_sum_minrow_l8_1 = _mm256_blendv_epi8(ymm_sum_minrow_l8_1, ymm_sum_row_l8_1, ymm_mask_gt_l8_1);
 				ymm_sum_minrow_l8_2 = _mm256_blendv_epi8(ymm_sum_minrow_l8_2, ymm_sum_row_l8_2, ymm_mask_gt_l8_2);
-
 				ymm_sum_minrow_h8_1 = _mm256_blendv_epi8(ymm_sum_minrow_h8_1, ymm_sum_row_h8_1, ymm_mask_gt_h8_1);
 				ymm_sum_minrow_h8_2 = _mm256_blendv_epi8(ymm_sum_minrow_h8_2, ymm_sum_row_h8_2, ymm_mask_gt_h8_2);
 
 				ymm_idx_minrow_l8_1 = _mm256_blendv_epi8(ymm_idx_minrow_l8_1, ymm_idx_row, ymm_mask_gt_l8_1);
 				ymm_idx_minrow_l8_2 = _mm256_blendv_epi8(ymm_idx_minrow_l8_2, ymm_idx_row, ymm_mask_gt_l8_2);
-
 				ymm_idx_minrow_h8_1 = _mm256_blendv_epi8(ymm_idx_minrow_h8_1, ymm_idx_row, ymm_mask_gt_h8_1);
 				ymm_idx_minrow_h8_2 = _mm256_blendv_epi8(ymm_idx_minrow_h8_2, ymm_idx_row, ymm_mask_gt_h8_2);
 
 			}
 
-			__m256i ymm_best_data_l8_1;
-			__m256i ymm_best_data_l8_2;
-			__m256i ymm_best_data_h8_1;
-			__m256i ymm_best_data_h8_2;
-
 			__m256i ymm_idx_mul = _mm256_set1_epi32(SIMD_AVX2_SPP);
+			__m256i ymm_idx_add_l8_1 = _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0);
+			__m256i ymm_idx_add_l8_2 = _mm256_set_epi32(15, 14, 13, 12, 11, 10, 9, 8);
+			__m256i ymm_idx_add_h8_1 = _mm256_set_epi32(23, 22, 21, 20, 19, 18, 17, 16);
+			__m256i ymm_idx_add_h8_2 = _mm256_set_epi32(31, 30, 29, 28, 27, 26, 25, 24);
 
 			ymm_idx_minrow_l8_1 = _mm256_mullo_epi32(ymm_idx_minrow_l8_1, ymm_idx_mul);
 			ymm_idx_minrow_l8_2 = _mm256_mullo_epi32(ymm_idx_minrow_l8_2, ymm_idx_mul);
 			ymm_idx_minrow_h8_1 = _mm256_mullo_epi32(ymm_idx_minrow_h8_1, ymm_idx_mul);
 			ymm_idx_minrow_h8_2 = _mm256_mullo_epi32(ymm_idx_minrow_h8_2, ymm_idx_mul);
 
-			ymm_best_data_l8_1 = _mm256_i32gather_epi32(pTemp, ymm_idx_minrow_l8_1, 4);
-			ymm_best_data_l8_2 = _mm256_i32gather_epi32(pTemp, ymm_idx_minrow_l8_2, 4);
-			ymm_best_data_h8_1 = _mm256_i32gather_epi32(pTemp, ymm_idx_minrow_h8_1, 4);
-			ymm_best_data_h8_2 = _mm256_i32gather_epi32(pTemp, ymm_idx_minrow_h8_2, 4);
+			ymm_idx_minrow_l8_1 = _mm256_add_epi32(ymm_idx_minrow_l8_1, ymm_idx_add_l8_1);
+			ymm_idx_minrow_l8_2 = _mm256_add_epi32(ymm_idx_minrow_l8_2, ymm_idx_add_l8_2);
+			ymm_idx_minrow_h8_1 = _mm256_add_epi32(ymm_idx_minrow_h8_1, ymm_idx_add_h8_1);
+			ymm_idx_minrow_h8_2 = _mm256_add_epi32(ymm_idx_minrow_h8_2, ymm_idx_add_h8_2);
 
-			ymm_best_data_l8_1 = _mm256_packus_epi32(ymm_best_data_l8_1, ymm_zero);
-			ymm_best_data_l8_2 = _mm256_packus_epi32(ymm_best_data_l8_2, ymm_zero);
-			ymm_best_data_h8_1 = _mm256_packus_epi32(ymm_best_data_h8_1, ymm_zero);
-			ymm_best_data_h8_2 = _mm256_packus_epi32(ymm_best_data_h8_2, ymm_zero);
+			__m256i ymm_best_l8_1 = _mm256_i32gather_epi32((int*)pTemp256, ymm_idx_minrow_l8_1, 4);
+			__m256i ymm_best_l8_2 = _mm256_i32gather_epi32((int*)pTemp256, ymm_idx_minrow_l8_2, 4);
+			__m256i ymm_best_h8_1 = _mm256_i32gather_epi32((int*)pTemp256, ymm_idx_minrow_h8_1, 4);
+			__m256i ymm_best_h8_2 = _mm256_i32gather_epi32((int*)pTemp256, ymm_idx_minrow_h8_2, 4);
 
-			ymm_best_data_l8_1 = _mm256_packus_epi16(ymm_best_data_l8_1, ymm_zero);
-			ymm_best_data_l8_2 = _mm256_packus_epi16(ymm_best_data_l8_2, ymm_zero);
-			ymm_best_data_h8_1 = _mm256_packus_epi16(ymm_best_data_h8_1, ymm_zero);
-			ymm_best_data_h8_2 = _mm256_packus_epi16(ymm_best_data_h8_2, ymm_zero);
+			/*
+			// check if best is below thresh-difference from current
+			if (INTABS(*best_data_ptr - pfp[_maxr][x + sub_x]) < thresh)
+			{
+				dstp[x + sub_x] = *best_data_ptr;
+			}
+			else
+			{
+				dstp[x + sub_x] = pfp[_maxr][x + sub_x];
+			}
+			*/
+			// process in 32bit to reuse stored unpacked src ?
+
+			__m256i* src_data_ptr = &pTemp256[_maxr * 4];
+
+			__m256i ymm_src_l8_1 = _mm256_load_si256(src_data_ptr + 0);
+			__m256i ymm_src_l8_2 = _mm256_load_si256(src_data_ptr + 1);
+			__m256i ymm_src_h8_1 = _mm256_load_si256(src_data_ptr + 2);
+			__m256i ymm_src_h8_2 = _mm256_load_si256(src_data_ptr + 3);
+
+			__m256i ymm_subtr_l8_1 = _mm256_sub_epi32(ymm_best_l8_1, ymm_src_l8_1);
+			__m256i ymm_subtr_l8_2 = _mm256_sub_epi32(ymm_best_l8_2, ymm_src_l8_2);
+			__m256i ymm_subtr_h8_1 = _mm256_sub_epi32(ymm_best_h8_1, ymm_src_h8_1);
+			__m256i ymm_subtr_h8_2 = _mm256_sub_epi32(ymm_best_h8_2, ymm_src_h8_2);
+
+			__m256i ymm_abs_bs_l8_1 = _mm256_abs_epi32(ymm_subtr_l8_1);
+			__m256i ymm_abs_bs_l8_2 = _mm256_abs_epi32(ymm_subtr_l8_2);
+			__m256i ymm_abs_bs_h8_1 = _mm256_abs_epi32(ymm_subtr_h8_1);
+			__m256i ymm_abs_bs_h8_2 = _mm256_abs_epi32(ymm_subtr_h8_2);
+
+			__m256i ymm_thresh = _mm256_set1_epi32(thresh);
+
+			__m256i ymm_mask_bs_gt_l8_1 = _mm256_cmpgt_epi32(ymm_abs_bs_l8_1, ymm_thresh);
+			__m256i ymm_mask_bs_gt_l8_2 = _mm256_cmpgt_epi32(ymm_abs_bs_l8_2, ymm_thresh);
+			__m256i ymm_mask_bs_gt_h8_1 = _mm256_cmpgt_epi32(ymm_abs_bs_h8_1, ymm_thresh);
+			__m256i ymm_mask_bs_gt_h8_2 = _mm256_cmpgt_epi32(ymm_abs_bs_h8_2, ymm_thresh);
+
+			__m256i ymm_out_l8_1 = _mm256_blendv_epi8(ymm_best_l8_1, ymm_src_l8_1, ymm_mask_bs_gt_l8_1);
+			__m256i ymm_out_l8_2 = _mm256_blendv_epi8(ymm_best_l8_2, ymm_src_l8_2, ymm_mask_bs_gt_l8_2);
+			__m256i ymm_out_h8_1 = _mm256_blendv_epi8(ymm_best_h8_1, ymm_src_h8_1, ymm_mask_bs_gt_h8_1);
+			__m256i ymm_out_h8_2 = _mm256_blendv_epi8(ymm_best_h8_2, ymm_src_h8_2, ymm_mask_bs_gt_h8_2);
+
+			ymm_out_l8_1 = _mm256_packus_epi32(ymm_out_l8_1, ymm_zero);
+			ymm_out_l8_2 = _mm256_packus_epi32(ymm_out_l8_2, ymm_zero);
+			ymm_out_h8_1 = _mm256_packus_epi32(ymm_out_h8_1, ymm_zero);
+			ymm_out_h8_2 = _mm256_packus_epi32(ymm_out_h8_2, ymm_zero);
+
+			ymm_out_l8_1 = _mm256_packus_epi16(ymm_out_l8_1, ymm_zero);
+			ymm_out_l8_2 = _mm256_packus_epi16(ymm_out_l8_2, ymm_zero);
+			ymm_out_h8_1 = _mm256_packus_epi16(ymm_out_h8_1, ymm_zero);
+			ymm_out_h8_2 = _mm256_packus_epi16(ymm_out_h8_2, ymm_zero);
 
 			__m256i ymm_idx_4_7 = _mm256_set_epi32(0, 0, 0, 0, 0, 0, 4, 0);
 			__m256i ymm_idx_12_15 = _mm256_set_epi32(0, 0, 0, 0, 4, 0, 0, 0);
 			__m256i ymm_idx_20_23 = _mm256_set_epi32(0, 0, 4, 0, 0, 0, 0, 0);
 			__m256i ymm_idx_28_31 = _mm256_set_epi32(4, 0, 0, 0, 0, 0, 0, 0);
 
-			ymm_best_data_l8_1 = _mm256_permutevar8x32_epi32(ymm_best_data_l8_1, ymm_idx_4_7);
-			ymm_best_data_l8_2 = _mm256_permutevar8x32_epi32(ymm_best_data_l8_2, ymm_idx_12_15);
-			ymm_best_data_h8_1 = _mm256_permutevar8x32_epi32(ymm_best_data_h8_1, ymm_idx_20_23);
-			ymm_best_data_h8_2 = _mm256_permutevar8x32_epi32(ymm_best_data_h8_2, ymm_idx_28_31);
+			ymm_out_l8_1 = _mm256_permutevar8x32_epi32(ymm_out_l8_1, ymm_idx_4_7);
+			ymm_out_l8_2 = _mm256_permutevar8x32_epi32(ymm_out_l8_2, ymm_idx_12_15);
+			ymm_out_h8_1 = _mm256_permutevar8x32_epi32(ymm_out_h8_1, ymm_idx_20_23);
+			ymm_out_h8_2 = _mm256_permutevar8x32_epi32(ymm_out_h8_2, ymm_idx_28_31);
 
-			__m256i ymm_out = _mm256_blend_epi32(ymm_best_data_l8_1, ymm_best_data_l8_2, 0x0C);
-			ymm_out = _mm256_blend_epi32(ymm_out, ymm_best_data_h8_1, 0x30);
-			ymm_out = _mm256_blend_epi32(ymm_out, ymm_best_data_h8_2, 0xC0);
+			__m256i ymm_out32 = _mm256_blend_epi32(ymm_out_l8_1, ymm_out_l8_2, 0x0C);
+			ymm_out32 = _mm256_blend_epi32(ymm_out32, ymm_out_h8_1, 0x30);
+			ymm_out32 = _mm256_blend_epi32(ymm_out32, ymm_out_h8_2, 0xC0);
 
 			uint8_t* pDst = &dstp[x];
-			_mm256_store_si256((__m256i*)(pDst), ymm_out);
-
-
+			_mm256_store_si256((__m256i*)(pDst), ymm_out32);
+			
+			
 			/*
 			for (int sub_x = 0; sub_x < 32; sub_x++)
 			{
@@ -1135,16 +1170,16 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PV
 				}
 
 				// check if best is below thresh-difference from current
-				if (INTABS(*best_data_ptr - srcp[_maxr][x + sub_x]) < thresh)
+				if (INTABS(*best_data_ptr - pfp[_maxr][x + sub_x]) < thresh)
 				{
 					dstp[x + sub_x] = *best_data_ptr;
 				}
 				else
 				{
-					dstp[x + sub_x] = srcp[_maxr][x + sub_x];
+					dstp[x + sub_x] = pfp[_maxr][x + sub_x];
 				}
 			} */
-
+			
 		}
 
 		for (int i{ 0 }; i < _diameter; ++i)
@@ -1476,14 +1511,14 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_uint16(PVideoFrame src[15], PVi
 					}
 				}
 
-				// check if best is below thresh-difference from current
-				if (INTABS(*best_data_ptr - srcp[_maxr][x + sub_x]) < thresh)
+				// check if best is below thresh-difference from current src
+				if (INTABS(*best_data_ptr - pfp[_maxr][x + sub_x]) < thresh)
 				{
 					dstp[x + sub_x] = *best_data_ptr;
 				}
 				else
 				{
-					dstp[x + sub_x] = srcp[_maxr][x + sub_x];
+					dstp[x + sub_x] = pfp[_maxr][x + sub_x];
 				}
 			}
 
