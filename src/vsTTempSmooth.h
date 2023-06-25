@@ -6,7 +6,7 @@
 
 #include "include\avisynth.h"
 
-#define MAX_TEMP_RAD 7 // max limited by 8bit in __m256i ymm_sum_minrow = _mm256_set1_epi16((short)iMaxSumDM); is 63 now ?
+#define MAX_TEMP_RAD 128 
 
 template<bool pfclip, bool fp>
 class TTempSmooth : public GenericVideoFilter
@@ -58,12 +58,14 @@ class TTempSmooth : public GenericVideoFilter
 
     float (*compare)(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
 
-	void filterI_mode2_C_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-	void filterI_mode2_C_uint16(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-	void filterI_mode2_avx2_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-	void filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-	void filterI_mode2_avx2_uint16(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+//	void filterI_mode2_C_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+//	void filterI_mode2_C_uint16(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 
+	template<typename T>
+	void filterI_mode2_C(PVideoFrame src[MAX_TEMP_RAD], PVideoFrame pf[MAX_TEMP_RAD], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+
+	template<typename T>
+	void filterI_mode2_avx2(PVideoFrame src[MAX_TEMP_RAD], PVideoFrame pf[MAX_TEMP_RAD], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 
 #ifdef _DEBUG
 	//MEL debug stat
