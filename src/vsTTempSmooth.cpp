@@ -254,7 +254,7 @@ template<typename T>
 void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane)
 {
 
-	int DM_table[MAX_TEMP_RAD * 2 + 1][MAX_TEMP_RAD * 2 + 1];
+//	int DM_table[MAX_TEMP_RAD * 2 + 1][MAX_TEMP_RAD * 2 + 1];
 
 	int src_stride[(MAX_TEMP_RAD * 2 + 1)]{};
 	int pf_stride[(MAX_TEMP_RAD * 2 + 1)]{};

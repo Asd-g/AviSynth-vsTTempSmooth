@@ -59,17 +59,16 @@ class TTempSmooth : public GenericVideoFilter
     float (*compare)(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
 
 	template<typename T>
-	void filterI_mode2_C(PVideoFrame src[MAX_TEMP_RAD], PVideoFrame pf[MAX_TEMP_RAD], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+	void filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 
 	template<typename T>
-	void filterI_mode2_avx2(PVideoFrame src[MAX_TEMP_RAD], PVideoFrame pf[MAX_TEMP_RAD], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+	void filterI_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 
 #ifdef _DEBUG
 	//MEL debug stat
 	int iMEL_non_current_samples;
 	int iMEL_mem_hits;
 	int iMEL_mem_updates;
-	int iDM_cache_hits;
 #endif
 	~TTempSmooth(void);
 
