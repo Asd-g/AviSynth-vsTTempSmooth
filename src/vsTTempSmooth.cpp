@@ -1,9 +1,6 @@
 #include "VCL2/instrset.h"
 #include "vsTTempSmooth.h"
 
-// need forceinline ?
-unsigned int INTABS(int x) { return (x < 0) ? -x : x; }
-
 template <bool pfclip, bool fp>
 template <typename T, bool useDiff>
 void TTempSmooth<pfclip, fp>::filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept
@@ -380,7 +377,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 
                     pMem[x] = *best_data_ptr;
                     pMemSum[x] = i_sum_minrow;
                 }
-                }
+            }
 
             // check if best is below thresh-difference from current src
             if (INTABS(*best_data_ptr - pfp[_maxr][x]) < thresh)
@@ -392,7 +389,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 
                 dstp[x] = pfp[_maxr][x];
             }
 
-            }
+        }
 
         for (int i{ 0 }; i < _diameter; ++i)
         {
@@ -403,7 +400,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 
         dstp += stride;
         pMem += width;// mem_stride; ??
         pMemSum += width;
-            }
+    }
 
 #ifdef _DEBUG
     float fRatioMEL_non_current_samples = (float)iMEL_non_current_samples / (float)(width * height);

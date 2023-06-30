@@ -6,7 +6,9 @@
 
 #include "include\avisynth.h"
 
-#define MAX_TEMP_RAD 128 
+#define MAX_TEMP_RAD 128
+
+AVS_FORCEINLINE unsigned int INTABS(int x) { return (x < 0) ? -x : x; }
 
 template<bool pfclip, bool fp>
 class TTempSmooth : public GenericVideoFilter
@@ -79,9 +81,9 @@ public:
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
     int __stdcall SetCacheHints(int cachehints, int frame_range) override
     {
-//        return cachehints == CACHE_GET_MTMODE ? MT_MULTI_INSTANCE : 0;
-        // set to serialized to correct work of IIR mode ?
-        return cachehints == CACHE_GET_MTMODE ? ( (_pmode == 1 && (_thUPD[0] > 0 || _thUPD[1] > 0 || _thUPD[2] > 0)) ? MT_SERIALIZED : MT_MULTI_INSTANCE) : 0;
+        //        return cachehints == CACHE_GET_MTMODE ? MT_MULTI_INSTANCE : 0;
+                // set to serialized to correct work of IIR mode ?
+        return cachehints == CACHE_GET_MTMODE ? ((_pmode == 1 && (_thUPD[0] > 0 || _thUPD[1] > 0 || _thUPD[2] > 0)) ? MT_SERIALIZED : MT_MULTI_INSTANCE) : 0;
     }
 };
 
