@@ -25,15 +25,15 @@ class TTempSmooth : public GenericVideoFilter
     bool has_at_least_v8;
     int _opt;
 
-	int _pmode;
-	uint8_t* pIIRMemY;
-	uint8_t* pIIRMemU;
-	uint8_t* pIIRMemV;
-	int _thUPD[3];
-	int* pMinSumMemY;
-	int* pMinSumMemU;
-	int* pMinSumMemV;
-	int _pnew[3];
+    int _pmode;
+    uint8_t* pIIRMemY;
+    uint8_t* pIIRMemU;
+    uint8_t* pIIRMemV;
+    int _thUPD[3];
+    int* pMinSumMemY;
+    int* pMinSumMemU;
+    int* pMinSumMemV;
+    int _pnew[3];
 
 
     template<typename T, bool useDiff>
@@ -58,28 +58,30 @@ class TTempSmooth : public GenericVideoFilter
 
     float (*compare)(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
 
-	template<typename T>
-	void filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+    template<typename T>
+    void filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 
-	template<typename T>
-	void filterI_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+    template<typename T>
+    void filterI_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 
 #ifdef _DEBUG
-	//MEL debug stat
-	int iMEL_non_current_samples;
-	int iMEL_mem_hits;
-	int iMEL_mem_updates;
+    //MEL debug stat
+    int iMEL_non_current_samples;
+    int iMEL_mem_hits;
+    int iMEL_mem_updates;
 #endif
-	~TTempSmooth(void);
+    ~TTempSmooth(void);
 
 public:
-    TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, 
-		int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew, int vpnew,
-		IScriptEnvironment* env);
+    TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh,
+        int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew, int vpnew,
+        IScriptEnvironment* env);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
     int __stdcall SetCacheHints(int cachehints, int frame_range) override
     {
-        return cachehints == CACHE_GET_MTMODE ? MT_MULTI_INSTANCE : 0;
+//        return cachehints == CACHE_GET_MTMODE ? MT_MULTI_INSTANCE : 0;
+        // set to serialized to correct work of IIR mode ?
+        return cachehints == CACHE_GET_MTMODE ? ( (_pmode == 1 && (_thUPD[0] > 0 || _thUPD[1] > 0 || _thUPD[2] > 0)) ? MT_SERIALIZED : MT_MULTI_INSTANCE) : 0;
     }
 };
 
