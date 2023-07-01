@@ -118,6 +118,30 @@ ymm_out32 = _mm256_blend_epi32(ymm_out_l8_1, ymm_out_l8_2, 0x0C);\
 ymm_out32 = _mm256_blend_epi32(ymm_out32, ymm_out_h8_1, 0x30);\
 ymm_out32 = _mm256_blend_epi32(ymm_out32, ymm_out_h8_2, 0xC0);
 
+#define unpck_2ymm16_to_4ymm8(ymm_src16_1, ymm_src16_2, ymm_l8_1, ymm_l8_2, ymm_h8_1, ymm_h8_2)\
+ymm_l8_1 = _mm256_permute4x64_epi64(ymm_src16_1, 0x10);\
+ymm_l8_2 = _mm256_permute4x64_epi64(ymm_src16_1, 0x32);\
+\
+ymm_h8_1 = _mm256_permute4x64_epi64(ymm_src16_2, 0x10);\
+ymm_h8_2 = _mm256_permute4x64_epi64(ymm_src16_2, 0x32);\
+\
+ymm_l8_1 = _mm256_unpacklo_epi16(ymm_l8_1, ymm_zero);\
+ymm_l8_2 = _mm256_unpacklo_epi16(ymm_l8_2, ymm_zero);\
+\
+ymm_h8_1 = _mm256_unpacklo_epi16(ymm_h8_1, ymm_zero);\
+ymm_h8_2 = _mm256_unpacklo_epi16(ymm_h8_2, ymm_zero);
+
+#define pck_4ymm8_to_2ymm16(ymm_out_l8_1, ymm_out_l8_2, ymm_out_h8_1, ymm_out_h8_2, ymm_out16_1, ymm_out16_2)\
+ymm_out16_1 = _mm256_packus_epi32(ymm_out_l8_1, ymm_out_l8_2);\
+ymm_out16_2 = _mm256_packus_epi32(ymm_out_h8_1, ymm_out_h8_2);\
+\
+ymm_out16_1 = _mm256_permute4x64_epi64(ymm_out16_1, 0xD8);\
+ymm_out16_2 = _mm256_permute4x64_epi64(ymm_out16_2, 0xD8);
+
+
+
+
+
 
 template <typename T>
 AVS_FORCEINLINE static Vec8i load(const void* p)
@@ -530,336 +554,50 @@ template void TTempSmooth<false, false>::filterI_avx2<uint16_t, false>(PVideoFra
 
 
 template<bool pfclip, bool fp>
-void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane)
+template<typename T>
+void TTempSmooth<pfclip, fp>::filterI_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane)
 {
 
-    int DM_table[MAX_TEMP_RAD * 2 + 1][MAX_TEMP_RAD * 2 + 1];
-
-    int src_stride[15]{};
-    int pf_stride[15]{};
-    const int stride{ dst->GetPitch(plane) };
-    const int width{ dst->GetRowSize(plane) };
-    const int height{ dst->GetHeight(plane) };
-    const uint8_t* srcp[15]{}, * pfp[15]{};
-
-    const int l{ plane >> 1 };
-    const int thresh{ _thresh[l] << _shift };
-
-    const int thUPD{ _thUPD[l] << _shift };
-    const int pnew{ _pnew[l] << _shift };
-    uint8_t* pMem;
-    if ((plane >> 1) == 0) pMem = pIIRMemY;
-    if ((plane >> 1) == 1) pMem = pIIRMemU;
-    if ((plane >> 1) == 2) pMem = pIIRMemV;
-
-    int* pMemSum;
-    if ((plane >> 1) == 0) pMemSum = pMinSumMemY;
-    if ((plane >> 1) == 1) pMemSum = pMinSumMemU;
-    if ((plane >> 1) == 2) pMemSum = pMinSumMemV;
-
-    const int iMaxSumDM = 255 * (_maxr * 2 + 1);
-
-    for (int i{ 0 }; i < _diameter; ++i)
-    {
-        src_stride[i] = src[i]->GetPitch(plane);
-        pf_stride[i] = pf[i]->GetPitch(plane);
-        srcp[i] = reinterpret_cast<const uint8_t*>(src[i]->GetReadPtr(plane));
-        pfp[i] = reinterpret_cast<const uint8_t*>(pf[i]->GetReadPtr(plane));
-    }
-
-#ifdef _DEBUG
-    iMEL_non_current_samples = 0;
-    iMEL_mem_hits = 0;
-#endif
-
-    uint8_t* dstp{ reinterpret_cast<uint8_t*>(dst->GetWritePtr(plane)) };
-
-    for (int y{ 0 }; y < height; ++y)
-    {
-        for (int x{ 0 }; x < width; x += 32)
-        {
-            // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
-            __m256i ymm_row_l16;
-            __m256i ymm_row_h16;
-            __m256i ymm_col_l16;
-            __m256i ymm_col_h16;
-            __m256i ymm_zero = _mm256_setzero_si256();
-
-            __m256i ymm_sum_minrow_l16 = _mm256_set1_epi16((short)iMaxSumDM); // hope 8bit 255-max diff with tr up to (2x7+1)=15 not overflow signed short ? max tr is 63 ? 
-            __m256i ymm_sum_minrow_h16 = _mm256_set1_epi16((short)iMaxSumDM); // hope 8bit 255-max diff with tr up to (2x7+1)=15 not overflow signed short ? max tr is 63 ? 
-            __m256i ymm_idx_minrow_l16 = _mm256_setzero_si256();
-            __m256i ymm_idx_minrow_h16 = _mm256_setzero_si256();
-
-            for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
-            {
-                __m256i ymm_sum_row_l16 = _mm256_setzero_si256();
-                __m256i ymm_sum_row_h16 = _mm256_setzero_si256();
-
-                for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
-                {
-                    if (dmt_row == dmt_col)
-                    { // block with itself => DM=0
-                        continue;
-                    }
-
-                    // _maxr is current sample, 0,1,2... is -maxr, ... +maxr
-                    uint8_t* row_data_ptr;
-                    uint8_t* col_data_ptr;
-
-                    if (dmt_row == _maxr) // src sample
-                    {
-                        row_data_ptr = (uint8_t*)&pfp[_maxr][x];
-                    }
-                    else // ref block
-                    {
-                        row_data_ptr = (uint8_t*)&srcp[dmt_row][x];
-                    }
-
-                    if (dmt_col == _maxr) // src sample
-                    {
-                        col_data_ptr = (uint8_t*)&pfp[_maxr][x];
-                    }
-                    else // ref block
-                    {
-                        col_data_ptr = (uint8_t*)&srcp[dmt_col][x];
-                    }
-
-                    __m256i ymm_row32 = _mm256_load_si256((const __m256i*)row_data_ptr);
-                    __m256i ymm_col32 = _mm256_load_si256((const __m256i*)col_data_ptr);
-
-                    ymm_row_l16 = _mm256_permute4x64_epi64(ymm_row32, 0x50);
-                    ymm_row_h16 = _mm256_permute4x64_epi64(ymm_row32, 0xFA);
-
-                    ymm_col_l16 = _mm256_permute4x64_epi64(ymm_col32, 0x50);
-                    ymm_col_h16 = _mm256_permute4x64_epi64(ymm_col32, 0xFA);
-
-                    ymm_row_l16 = _mm256_unpacklo_epi8(ymm_row_l16, ymm_zero);
-                    ymm_row_h16 = _mm256_unpacklo_epi8(ymm_row_h16, ymm_zero);
-
-                    ymm_col_l16 = _mm256_unpacklo_epi8(ymm_col_l16, ymm_zero);
-                    ymm_col_h16 = _mm256_unpacklo_epi8(ymm_col_h16, ymm_zero);
-
-                    __m256i ymm_subtr_l16 = _mm256_sub_epi16(ymm_row_l16, ymm_col_l16);
-                    __m256i ymm_subtr_h16 = _mm256_sub_epi16(ymm_row_h16, ymm_col_h16);
-
-                    __m256i ymm_abs_l16 = _mm256_abs_epi16(ymm_subtr_l16);
-                    __m256i ymm_abs_h16 = _mm256_abs_epi16(ymm_subtr_h16);
-
-                    ymm_sum_row_l16 = _mm256_add_epi16(ymm_sum_row_l16, ymm_abs_l16);
-                    ymm_sum_row_h16 = _mm256_add_epi16(ymm_sum_row_h16, ymm_abs_h16);
-                }
-
-                __m256i ymm_mask_gt_l16 = _mm256_cmpgt_epi16(ymm_sum_minrow_l16, ymm_sum_row_l16);
-                __m256i ymm_mask_gt_h16 = _mm256_cmpgt_epi16(ymm_sum_minrow_h16, ymm_sum_row_h16);
-
-                __m256i ymm_idx_row = _mm256_set1_epi16((short)dmt_row);
-
-                ymm_sum_minrow_l16 = _mm256_blendv_epi8(ymm_sum_minrow_l16, ymm_sum_row_l16, ymm_mask_gt_l16);
-                ymm_sum_minrow_h16 = _mm256_blendv_epi8(ymm_sum_minrow_h16, ymm_sum_row_h16, ymm_mask_gt_h16);
-
-                ymm_idx_minrow_l16 = _mm256_blendv_epi8(ymm_idx_minrow_l16, ymm_idx_row, ymm_mask_gt_l16);
-                ymm_idx_minrow_h16 = _mm256_blendv_epi8(ymm_idx_minrow_h16, ymm_idx_row, ymm_mask_gt_h16);
-
-            }
-
-            for (int sub_x = 0; sub_x < 32; sub_x++)
-            {
-                int i_idx_minrow;
-                int i_sum_minrow;
-
-                if (sub_x < 16)
-                {
-                    i_idx_minrow = my_extract_epi16_from256(ymm_idx_minrow_l16, sub_x);
-                    i_sum_minrow = my_extract_epi16_from256(ymm_sum_minrow_l16, sub_x);
-                }
-                else
-                {
-                    i_idx_minrow = my_extract_epi16_from256(ymm_idx_minrow_h16, sub_x - 16);
-                    i_sum_minrow = my_extract_epi16_from256(ymm_sum_minrow_h16, sub_x - 16);
-                }
-#ifdef _DEBUG
-
-                // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
-                int i_sum_minrow_s = iMaxSumDM;
-                int i_idx_minrow_s = 0;
-
-                for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
-                {
-                    int i_sum_row_s = 0;
-                    for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
-                    {
-                        if (dmt_row == dmt_col)
-                        { // block with itself => DM=0
-                            continue;
-                        }
-
-                        // _maxr is current sample, 0,1,2... is -maxr, ... +maxr
-                        uint8_t* row_data_ptr;
-                        uint8_t* col_data_ptr;
-
-                        if (dmt_row == _maxr) // src sample
-                        {
-                            row_data_ptr = (uint8_t*)&pfp[_maxr][x + sub_x];
-                        }
-                        else // ref block
-                        {
-                            row_data_ptr = (uint8_t*)&srcp[dmt_row][x + sub_x];
-                        }
-
-                        if (dmt_col == _maxr) // src sample
-                        {
-                            col_data_ptr = (uint8_t*)&pfp[_maxr][x + sub_x];
-                        }
-                        else // ref block
-                        {
-                            col_data_ptr = (uint8_t*)&srcp[dmt_col][x + sub_x];
-                        }
-
-                        i_sum_row_s += INTABS(*row_data_ptr - *col_data_ptr);
-                    }
-
-                    if (i_sum_row_s < i_sum_minrow_s)
-                    {
-                        i_sum_minrow_s = i_sum_row_s;
-                        i_idx_minrow_s = dmt_row;
-                    }
-                }
-
-                if (i_idx_minrow != i_idx_minrow_s)
-                {
-                    int idbr = 0;
-                }
-
-                if (i_sum_minrow != i_sum_minrow_s)
-                {
-                    int idbr = 0;
-                }
-
-#endif
-                // set block of idx_minrow as output block
-                const BYTE* best_data_ptr;
-
-                if (i_idx_minrow == _maxr) // src sample
-                {
-                    best_data_ptr = &pfp[_maxr][x + sub_x];
-
-                }
-                else // ref sample
-                {
-                    best_data_ptr = &srcp[i_idx_minrow][x + sub_x];
-
-#ifdef _DEBUG
-                    iMEL_non_current_samples++;
-#endif
-                }
-
-                if (thUPD > 0) // IIR here
-                {
-                    // IIR - check if memory sample is still good
-                    int idm_mem = INTABS(*best_data_ptr - pMem[x + sub_x]);
-
-                    if ((idm_mem < thUPD) && ((i_sum_minrow + pnew) >= pMemSum[x + sub_x]))
-                    {
-                        //mem still good - output mem block
-                        best_data_ptr = &pMem[x + sub_x];
-
-#ifdef _DEBUG
-                        iMEL_mem_hits++;
-#endif
-                    }
-                    else // mem no good - update mem
-                    {
-                        pMem[x + sub_x] = *best_data_ptr;
-                        pMemSum[x + sub_x] = i_sum_minrow;
-                    }
-                }
-
-                // check if best is below thresh-difference from current src
-                if (INTABS(*best_data_ptr - pfp[_maxr][x + sub_x]) < thresh)
-                {
-                    dstp[x + sub_x] = *best_data_ptr;
-                }
-                else
-                {
-                    dstp[x + sub_x] = pfp[_maxr][x + sub_x];
-                }
-            }
-
-        }
-
-        for (int i{ 0 }; i < _diameter; ++i)
-        {
-            srcp[i] += src_stride[i];
-            pfp[i] += pf_stride[i];
-        }
-
-        dstp += stride;
-        pMem += width;// mem_stride; ??
-        pMemSum += width;
-    }
-
-#ifdef _DEBUG
-    float fRatioMEL_non_current_samples = (float)iMEL_non_current_samples / (float)(width * height);
-    float fRatioMEL_mem_samples = (float)iMEL_mem_hits / (float)(width * height);
-    int idbr = 0;
-#endif
-}
-
-template void TTempSmooth<true, true>::filterI_mode2_avx2_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-template void TTempSmooth<true, false>::filterI_mode2_avx2_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-template void TTempSmooth<false, true>::filterI_mode2_avx2_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-template void TTempSmooth<false, false>::filterI_mode2_avx2_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-
-
-
-template<bool pfclip, bool fp>
-void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane)
-{
-
-    int DM_table[MAX_TEMP_RAD * 2 + 1][MAX_TEMP_RAD * 2 + 1];
+    //	int DM_table[MAX_TEMP_RAD * 2 + 1][MAX_TEMP_RAD * 2 + 1];
 #define SIMD_AVX2_SPP 32
 
     __m256i alignas(32) Temp256[(MAX_TEMP_RAD * 2 + 1) * 4];
     __m256i* pTemp256 = &Temp256[0];
 
-    int src_stride[15]{};
-    int pf_stride[15]{};
-    const int stride{ dst->GetPitch(plane) };
-    const int width{ dst->GetRowSize(plane) };
+    int src_stride[(MAX_TEMP_RAD * 2 + 1)]{};
+    int pf_stride[(MAX_TEMP_RAD * 2 + 1)]{};
+    const size_t stride{ dst->GetPitch(plane) / sizeof(T) };
+    const size_t width{ dst->GetRowSize(plane) / sizeof(T) };
     const int height{ dst->GetHeight(plane) };
-    const uint8_t* srcp[15]{}, * pfp[15]{};
+    const T* srcp[(MAX_TEMP_RAD * 2 + 1)]{}, * pfp[(MAX_TEMP_RAD * 2 + 1)]{};
 
     const int l{ plane >> 1 };
     const int thresh{ _thresh[l] << _shift };
 
     const int thUPD{ _thUPD[l] << _shift };
     const int pnew{ _pnew[l] << _shift };
-    uint8_t* pMem;
-    if ((plane >> 1) == 0) pMem = pIIRMemY;
-    if ((plane >> 1) == 1) pMem = pIIRMemU;
-    if ((plane >> 1) == 2) pMem = pIIRMemV;
+    T* pMem = 0;
+    if ((plane >> 1) == 0) pMem = reinterpret_cast<T*>(pIIRMemY);
+    if ((plane >> 1) == 1) pMem = reinterpret_cast<T*>(pIIRMemU);
+    if ((plane >> 1) == 2) pMem = reinterpret_cast<T*>(pIIRMemV);
 
-    int* pMemSum;
+    int* pMemSum = 0;
     if ((plane >> 1) == 0) pMemSum = pMinSumMemY;
     if ((plane >> 1) == 1) pMemSum = pMinSumMemU;
     if ((plane >> 1) == 2) pMemSum = pMinSumMemV;
 
-    const int iMaxSumDM = 255 * (_maxr * 2 + 1);
+    const int iMaxSumDM = (sizeof(T) < 2) ? 255 * (_maxr * 2 + 1) : 65535 * (_maxr * 2 + 1);
 
     for (int i{ 0 }; i < _diameter; ++i)
     {
-        src_stride[i] = src[i]->GetPitch(plane);
-        pf_stride[i] = pf[i]->GetPitch(plane);
-        srcp[i] = reinterpret_cast<const uint8_t*>(src[i]->GetReadPtr(plane));
-        pfp[i] = reinterpret_cast<const uint8_t*>(pf[i]->GetReadPtr(plane));
+        src_stride[i] = src[i]->GetPitch(plane) / sizeof(T);
+        pf_stride[i] = pf[i]->GetPitch(plane) / sizeof(T);
+        srcp[i] = reinterpret_cast<const T*>(src[i]->GetReadPtr(plane));
+        pfp[i] = reinterpret_cast<const T*>(pf[i]->GetReadPtr(plane));
     }
 
-#ifdef _DEBUG
-    iMEL_non_current_samples = 0;
-    iMEL_mem_hits = 0;
-#endif
+    T* dstp{ reinterpret_cast<T*>(dst->GetWritePtr(plane)) };
 
-    uint8_t* dstp{ reinterpret_cast<uint8_t*>(dst->GetWritePtr(plane)) };
     const __m256i ymm_zero = _mm256_setzero_si256();
     const __m256i ymm_idx_0_3_4_7 = _mm256_set_epi32(0, 0, 0, 1, 0, 0, 0, 0);
     const __m256i ymm_idx_8_11_12_15 = _mm256_set_epi32(0, 0, 0, 3, 0, 0, 0, 2);
@@ -871,6 +609,12 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PV
     const __m256i ymm_idx_20_23 = _mm256_set_epi32(0, 0, 4, 0, 0, 0, 0, 0);
     const __m256i ymm_idx_28_31 = _mm256_set_epi32(4, 0, 0, 0, 0, 0, 0, 0);
 
+    const __m256i ymm_idx_mul = _mm256_set1_epi32(SIMD_AVX2_SPP);
+    const __m256i ymm_idx_add_l8_1 = _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0);
+    const __m256i ymm_idx_add_l8_2 = _mm256_set_epi32(15, 14, 13, 12, 11, 10, 9, 8);
+    const __m256i ymm_idx_add_h8_1 = _mm256_set_epi32(23, 22, 21, 20, 19, 18, 17, 16);
+    const __m256i ymm_idx_add_h8_2 = _mm256_set_epi32(31, 30, 29, 28, 27, 26, 25, 24);
+
 
     for (int y{ 0 }; y < height; ++y)
     {
@@ -879,58 +623,77 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PV
             // copy all input frames processed samples in SIMD pass in the temp buf in uint32 form
             for (int i = 0; i < (_maxr * 2 + 1); i++)
             {
-                uint8_t* data_ptr;
+                T* data_ptr;
                 if (i == _maxr) // src sample
                 {
-                    data_ptr = (uint8_t*)&pfp[_maxr][x];
+                    data_ptr = (T*)&pfp[_maxr][x];
                 }
                 else // ref sample
                 {
-                    data_ptr = (uint8_t*)&srcp[i][x];
+                    data_ptr = (T*)&srcp[i][x];
                 }
 
-                __m256i ymm_l8_1;
-                __m256i ymm_l8_2;
-                __m256i ymm_h8_1;
-                __m256i ymm_h8_2;
+                __m256i ymm_l8_1, ymm_l8_2, ymm_h8_1, ymm_h8_2;
 
-                __m256i ymm_src32 = _mm256_load_si256((const __m256i*)data_ptr);
-                /*
-                ymm_l8_1 = _mm256_permutevar8x32_epi32(ymm_src32, ymm_idx_0_3_4_7);
-                ymm_l8_2 = _mm256_permutevar8x32_epi32(ymm_src32, ymm_idx_8_11_12_15);
-                ymm_h8_1 = _mm256_permutevar8x32_epi32(ymm_src32, ymm_idx_16_19_20_23);
-                ymm_h8_2 = _mm256_permutevar8x32_epi32(ymm_src32, ymm_idx_24_27_28_31);
+                if (sizeof(T) == 1) // 8bit samples
+                {
+                    __m256i ymm_src32 = _mm256_load_si256((const __m256i*)data_ptr);
+                    /*
+                    ymm_l8_1 = _mm256_permutevar8x32_epi32(ymm_src32, ymm_idx_0_3_4_7);
+                    ymm_l8_2 = _mm256_permutevar8x32_epi32(ymm_src32, ymm_idx_8_11_12_15);
+                    ymm_h8_1 = _mm256_permutevar8x32_epi32(ymm_src32, ymm_idx_16_19_20_23);
+                    ymm_h8_2 = _mm256_permutevar8x32_epi32(ymm_src32, ymm_idx_24_27_28_31);
 
-                ymm_l8_1 = _mm256_unpacklo_epi8(ymm_l8_1, ymm_zero);
-                ymm_l8_2 = _mm256_unpacklo_epi8(ymm_l8_2, ymm_zero);
-                ymm_h8_1 = _mm256_unpacklo_epi8(ymm_h8_1, ymm_zero);
-                ymm_h8_2 = _mm256_unpacklo_epi8(ymm_h8_2, ymm_zero);
+                    ymm_l8_1 = _mm256_unpacklo_epi8(ymm_l8_1, ymm_zero);
+                    ymm_l8_2 = _mm256_unpacklo_epi8(ymm_l8_2, ymm_zero);
+                    ymm_h8_1 = _mm256_unpacklo_epi8(ymm_h8_1, ymm_zero);
+                    ymm_h8_2 = _mm256_unpacklo_epi8(ymm_h8_2, ymm_zero);
 
-                ymm_l8_1 = _mm256_unpacklo_epi16(ymm_l8_1, ymm_zero);
-                ymm_l8_2 = _mm256_unpacklo_epi16(ymm_l8_2, ymm_zero);
-                ymm_h8_1 = _mm256_unpacklo_epi16(ymm_h8_1, ymm_zero);
-                ymm_h8_2 = _mm256_unpacklo_epi16(ymm_h8_2, ymm_zero);
-                */
-                //				__m256i ymm_src32 = _mm256_load_si256((const __m256i*)data_ptr);
+                    ymm_l8_1 = _mm256_unpacklo_epi16(ymm_l8_1, ymm_zero);
+                    ymm_l8_2 = _mm256_unpacklo_epi16(ymm_l8_2, ymm_zero);
+                    ymm_h8_1 = _mm256_unpacklo_epi16(ymm_h8_1, ymm_zero);
+                    ymm_h8_2 = _mm256_unpacklo_epi16(ymm_h8_2, ymm_zero);
+                    */
 
-                unpck_ymm32_to_4ymm8(ymm_src32, ymm_l8_1, ymm_l8_2, ymm_h8_1, ymm_h8_2);
+                    unpck_ymm32_to_4ymm8(ymm_src32, ymm_l8_1, ymm_l8_2, ymm_h8_1, ymm_h8_2);
 
-                _mm256_store_si256(pTemp256 + i * 4 + 0, ymm_l8_1);
-                _mm256_store_si256(pTemp256 + i * 4 + 1, ymm_l8_2);
-                _mm256_store_si256(pTemp256 + i * 4 + 2, ymm_h8_1);
-                _mm256_store_si256(pTemp256 + i * 4 + 3, ymm_h8_2);
+                    _mm256_store_si256(pTemp256 + (int64_t)i * 4 + 0, ymm_l8_1);
+                    _mm256_store_si256(pTemp256 + (int64_t)i * 4 + 1, ymm_l8_2);
+                    _mm256_store_si256(pTemp256 + (int64_t)i * 4 + 2, ymm_h8_1);
+                    _mm256_store_si256(pTemp256 + (int64_t)i * 4 + 3, ymm_h8_2);
+                }
+                else // 16bit samples
+                {
+                    __m256i ymm_src16_1 = _mm256_load_si256((const __m256i*)data_ptr);
+                    __m256i ymm_src16_2 = _mm256_load_si256((const __m256i*)(data_ptr + 16));
+
+                    /*
+                    ymm_l8_1 = _mm256_permute4x64_epi64(ymm_src16_1, 0x10);
+                    ymm_l8_2 = _mm256_permute4x64_epi64(ymm_src16_1, 0x32);
+
+                    ymm_h8_1 = _mm256_permute4x64_epi64(ymm_src16_2, 0x10);
+                    ymm_h8_2 = _mm256_permute4x64_epi64(ymm_src16_2, 0x32);
+
+                    ymm_l8_1 = _mm256_unpacklo_epi16(ymm_l8_1, ymm_zero);
+                    ymm_l8_2 = _mm256_unpacklo_epi16(ymm_l8_2, ymm_zero);
+
+                    ymm_h8_1 = _mm256_unpacklo_epi16(ymm_h8_1, ymm_zero);
+                    ymm_h8_2 = _mm256_unpacklo_epi16(ymm_h8_2, ymm_zero);*/
+
+                    unpck_2ymm16_to_4ymm8(ymm_src16_1, ymm_src16_2, ymm_l8_1, ymm_l8_2, ymm_h8_1, ymm_h8_2);
+
+                    _mm256_store_si256(pTemp256 + (int64_t)i * 4 + 0, ymm_l8_1);
+                    _mm256_store_si256(pTemp256 + (int64_t)i * 4 + 1, ymm_l8_2);
+                    _mm256_store_si256(pTemp256 + (int64_t)i * 4 + 2, ymm_h8_1);
+                    _mm256_store_si256(pTemp256 + (int64_t)i * 4 + 3, ymm_h8_2);
+
+                }
 
             }
 
             // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
-            __m256i ymm_row_l8_1;
-            __m256i ymm_row_l8_2;
-            __m256i ymm_row_h8_1;
-            __m256i ymm_row_h8_2;
-            __m256i ymm_col_l8_1;
-            __m256i ymm_col_l8_2;
-            __m256i ymm_col_h8_1;
-            __m256i ymm_col_h8_2;
+            __m256i ymm_row_l8_1, ymm_row_l8_2, ymm_row_h8_1, ymm_row_h8_2;
+            __m256i ymm_col_l8_1, ymm_col_l8_2, ymm_col_h8_1, ymm_col_h8_2;
 
             __m256i ymm_sum_minrow_l8_1 = _mm256_set1_epi32(iMaxSumDM);
             __m256i ymm_sum_minrow_l8_2 = _mm256_set1_epi32(iMaxSumDM);
@@ -1005,12 +768,6 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PV
 
             }
 
-            __m256i ymm_idx_mul = _mm256_set1_epi32(SIMD_AVX2_SPP);
-            __m256i ymm_idx_add_l8_1 = _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0);
-            __m256i ymm_idx_add_l8_2 = _mm256_set_epi32(15, 14, 13, 12, 11, 10, 9, 8);
-            __m256i ymm_idx_add_h8_1 = _mm256_set_epi32(23, 22, 21, 20, 19, 18, 17, 16);
-            __m256i ymm_idx_add_h8_2 = _mm256_set_epi32(31, 30, 29, 28, 27, 26, 25, 24);
-
             ymm_idx_minrow_l8_1 = _mm256_mullo_epi32(ymm_idx_minrow_l8_1, ymm_idx_mul);
             ymm_idx_minrow_l8_2 = _mm256_mullo_epi32(ymm_idx_minrow_l8_2, ymm_idx_mul);
             ymm_idx_minrow_h8_1 = _mm256_mullo_epi32(ymm_idx_minrow_h8_1, ymm_idx_mul);
@@ -1049,23 +806,29 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PV
 
             if (thUPD > 0) // IIR here)
             {
-                __m256i ymm_Mem32 = _mm256_loadu_si256((const __m256i*) & pMem[x]);
+                __m256i ymm_Mem_l8_1, ymm_Mem_l8_2, ymm_Mem_h8_1, ymm_Mem_h8_2;
 
-                __m256i ymm_Mem_l8_1;
-                __m256i ymm_Mem_l8_2;
-                __m256i ymm_Mem_h8_1;
-                __m256i ymm_Mem_h8_2;
+                if (sizeof(T) == 1) // 8bit samples
+                {
+                    __m256i ymm_Mem32 = _mm256_loadu_si256((const __m256i*) & pMem[x]);
 
-                unpck_ymm32_to_4ymm8(ymm_Mem32, ymm_Mem_l8_1, ymm_Mem_l8_2, ymm_Mem_h8_1, ymm_Mem_h8_2);
+                    unpck_ymm32_to_4ymm8(ymm_Mem32, ymm_Mem_l8_1, ymm_Mem_l8_2, ymm_Mem_h8_1, ymm_Mem_h8_2);
 
-                __m256i ymm_MemSum32 = _mm256_loadu_si256((const __m256i*) & pMemSum[x]);
+                }
+                else // 16bit samples
+                {
+                    __m256i ymm_Mem16_1 = _mm256_loadu_si256((const __m256i*) & pMem[x]);
+                    __m256i ymm_Mem16_2 = _mm256_loadu_si256((const __m256i*) & pMem[x + 16]); //?? 
 
-                __m256i ymm_MemSum_l8_1;
-                __m256i ymm_MemSum_l8_2;
-                __m256i ymm_MemSum_h8_1;
-                __m256i ymm_MemSum_h8_2;
+                    unpck_2ymm16_to_4ymm8(ymm_Mem16_1, ymm_Mem16_2, ymm_Mem_l8_1, ymm_Mem_l8_2, ymm_Mem_h8_1, ymm_Mem_h8_2);
+                }
 
-                unpck_ymm32_to_4ymm8(ymm_MemSum32, ymm_MemSum_l8_1, ymm_MemSum_l8_2, ymm_MemSum_h8_1, ymm_MemSum_h8_2);
+                __m256i ymm_MemSum_l8_1, ymm_MemSum_l8_2, ymm_MemSum_h8_1, ymm_MemSum_h8_2;
+
+                ymm_MemSum_l8_1 = _mm256_loadu_si256((const __m256i*) & pMemSum[x]); // todo: make pMem/pMemSum 32bytes aligned to use aligned load/store
+                ymm_MemSum_l8_2 = _mm256_loadu_si256((const __m256i*) & pMemSum[x + 8]);
+                ymm_MemSum_h8_1 = _mm256_loadu_si256((const __m256i*) & pMemSum[x + 16]);
+                ymm_MemSum_h8_2 = _mm256_loadu_si256((const __m256i*) & pMemSum[x + 24]);
 
                 // int idm_mem = INTABS(*best_data_ptr - pMem[x + sub_x]);
                 __m256i ymm_dm_mem_l8_1 = _mm256_sub_epi32(ymm_best_l8_1, ymm_Mem_l8_1);
@@ -1123,15 +886,28 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PV
                 ymm_MemSum_h8_1 = _mm256_blendv_epi8(ymm_sum_minrow_h8_1, ymm_MemSum_h8_1, ymm_mask12_h8_1);
                 ymm_MemSum_h8_2 = _mm256_blendv_epi8(ymm_sum_minrow_h8_2, ymm_MemSum_h8_2, ymm_mask12_h8_2);
 
-                __m256i ymm_Mem_out32;
-                pck_4ymm8_to_ymm32(ymm_Mem_l8_1, ymm_Mem_l8_2, ymm_Mem_h8_1, ymm_Mem_h8_2, ymm_Mem_out32)
+                if (sizeof(T) == 1) // 8bit samples
+                {
+                    __m256i ymm_Mem_out32;
+                    pck_4ymm8_to_ymm32(ymm_Mem_l8_1, ymm_Mem_l8_2, ymm_Mem_h8_1, ymm_Mem_h8_2, ymm_Mem_out32)
 
-                    __m256i ymm_MemSum_out32;
-                pck_4ymm8_to_ymm32(ymm_MemSum_l8_1, ymm_MemSum_l8_2, ymm_MemSum_h8_1, ymm_MemSum_h8_2, ymm_MemSum_out32)
+                        _mm256_storeu_si256((__m256i*)(&pMem[x]), ymm_Mem_out32);
+                }
+                else // 16bit samples
+                {
+                    __m256i ymm_Mem_out16_1, ymm_Mem_out16_2;
 
-                    _mm256_storeu_si256((__m256i*)(&pMem[x]), ymm_Mem_out32);
-                _mm256_storeu_si256((__m256i*)(&pMemSum[x]), ymm_MemSum_out32);
+                    pck_4ymm8_to_2ymm16(ymm_Mem_l8_1, ymm_Mem_l8_2, ymm_Mem_h8_1, ymm_Mem_h8_2, ymm_Mem_out16_1, ymm_Mem_out16_2)
 
+                        _mm256_storeu_si256((__m256i*)(&pMem[x]), ymm_Mem_out16_1);
+                    _mm256_storeu_si256((__m256i*)(&pMem[x + 16]), ymm_Mem_out16_2);
+
+                }
+
+                _mm256_storeu_si256((__m256i*)(&pMemSum[x]), ymm_MemSum_l8_1);
+                _mm256_storeu_si256((__m256i*)(&pMemSum[x + 8]), ymm_MemSum_l8_2);
+                _mm256_storeu_si256((__m256i*)(&pMemSum[x + 16]), ymm_MemSum_h8_1);
+                _mm256_storeu_si256((__m256i*)(&pMemSum[x + 24]), ymm_MemSum_h8_2);
 
             }
 
@@ -1177,167 +953,34 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PV
             __m256i ymm_out_l8_2 = _mm256_blendv_epi8(ymm_best_l8_2, ymm_src_l8_2, ymm_mask_bs_gt_l8_2);
             __m256i ymm_out_h8_1 = _mm256_blendv_epi8(ymm_best_h8_1, ymm_src_h8_1, ymm_mask_bs_gt_h8_1);
             __m256i ymm_out_h8_2 = _mm256_blendv_epi8(ymm_best_h8_2, ymm_src_h8_2, ymm_mask_bs_gt_h8_2);
-            /*
-                        ymm_out_l8_1 = _mm256_packus_epi32(ymm_out_l8_1, ymm_zero);
-                        ymm_out_l8_2 = _mm256_packus_epi32(ymm_out_l8_2, ymm_zero);
-                        ymm_out_h8_1 = _mm256_packus_epi32(ymm_out_h8_1, ymm_zero);
-                        ymm_out_h8_2 = _mm256_packus_epi32(ymm_out_h8_2, ymm_zero);
 
-                        ymm_out_l8_1 = _mm256_packus_epi16(ymm_out_l8_1, ymm_zero);
-                        ymm_out_l8_2 = _mm256_packus_epi16(ymm_out_l8_2, ymm_zero);
-                        ymm_out_h8_1 = _mm256_packus_epi16(ymm_out_h8_1, ymm_zero);
-                        ymm_out_h8_2 = _mm256_packus_epi16(ymm_out_h8_2, ymm_zero);
-
-                        ymm_out_l8_1 = _mm256_permutevar8x32_epi32(ymm_out_l8_1, ymm_idx_4_7);
-                        ymm_out_l8_2 = _mm256_permutevar8x32_epi32(ymm_out_l8_2, ymm_idx_12_15);
-                        ymm_out_h8_1 = _mm256_permutevar8x32_epi32(ymm_out_h8_1, ymm_idx_20_23);
-                        ymm_out_h8_2 = _mm256_permutevar8x32_epi32(ymm_out_h8_2, ymm_idx_28_31);
-
-                        __m256i ymm_out32 = _mm256_blend_epi32(ymm_out_l8_1, ymm_out_l8_2, 0x0C);
-                        ymm_out32 = _mm256_blend_epi32(ymm_out32, ymm_out_h8_1, 0x30);
-                        ymm_out32 = _mm256_blend_epi32(ymm_out32, ymm_out_h8_2, 0xC0);
-            */
-            __m256i ymm_out32;
-            pck_4ymm8_to_ymm32(ymm_out_l8_1, ymm_out_l8_2, ymm_out_h8_1, ymm_out_h8_2, ymm_out32)
-
-                uint8_t* pDst = &dstp[x];
-            _mm256_store_si256((__m256i*)(pDst), ymm_out32);
-
-
-            /*
-            for (int sub_x = 0; sub_x < 32; sub_x++)
+            if (sizeof(T) == 1) // 8bit samples
             {
-                int i_idx_minrow;
-                int i_sum_minrow;
+                __m256i ymm_out32;
+                pck_4ymm8_to_ymm32(ymm_out_l8_1, ymm_out_l8_2, ymm_out_h8_1, ymm_out_h8_2, ymm_out32)
 
-                if (sub_x < 8)
-                {
-                    i_idx_minrow = my_extract_epi32_from256(ymm_idx_minrow_l8_1, sub_x);
-                    i_sum_minrow = my_extract_epi32_from256(ymm_sum_minrow_l8_1, sub_x);
-                }
-                else if (sub_x < 16)
-                {
-                    i_idx_minrow = my_extract_epi32_from256(ymm_idx_minrow_l8_2, sub_x - 8);
-                    i_sum_minrow = my_extract_epi32_from256(ymm_sum_minrow_l8_2, sub_x - 8);
-                }
-                else if (sub_x < 24)
-                {
-                    i_idx_minrow = my_extract_epi32_from256(ymm_idx_minrow_h8_1, sub_x - 16);
-                    i_sum_minrow = my_extract_epi32_from256(ymm_sum_minrow_h8_1, sub_x - 16);
-                }
-                else
-                {
-                    i_idx_minrow = my_extract_epi32_from256(ymm_idx_minrow_h8_2, sub_x - 24);
-                    i_sum_minrow = my_extract_epi32_from256(ymm_sum_minrow_h8_2, sub_x - 24);
-                }
-#ifdef _DEBUG
+                    T* pDst = &dstp[x];
+                _mm256_store_si256((__m256i*)(pDst), ymm_out32);
+            }
+            else // 16bit samples
+            {
+                __m256i ymm_out16_1, ymm_out16_2;
+                /*
+                ymm_out16_1 = _mm256_packus_epi32(ymm_out_l8_1, ymm_out_l8_2);
+                ymm_out16_2 = _mm256_packus_epi32(ymm_out_h8_1, ymm_out_h8_2);
 
-                // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
-                int i_sum_minrow_s = iMaxSumDM;
-                int i_idx_minrow_s = 0;
+                ymm_out16_1 = _mm256_permute4x64_epi64(ymm_out16_1, 0xD8);
+                ymm_out16_2 = _mm256_permute4x64_epi64(ymm_out16_2, 0xD8);
+                */
 
-                for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
-                {
-                    int i_sum_row_s = 0;
-                    for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
-                    {
-                        if (dmt_row == dmt_col)
-                        { // block with itself => DM=0
-                            continue;
-                        }
+                pck_4ymm8_to_2ymm16(ymm_out_l8_1, ymm_out_l8_2, ymm_out_h8_1, ymm_out_h8_2, ymm_out16_1, ymm_out16_2)
 
-                        // _maxr is current sample, 0,1,2... is -maxr, ... +maxr
-                        uint8_t* row_data_ptr;
-                        uint8_t* col_data_ptr;
+                    T* pDst = &dstp[x];
+                _mm256_store_si256((__m256i*)(pDst), ymm_out16_1);
+                _mm256_store_si256((__m256i*)(pDst + 16), ymm_out16_2); // ptr in shorts
 
-                        if (dmt_row == _maxr) // src sample
-                        {
-                            row_data_ptr = (uint8_t*)&pfp[_maxr][x + sub_x];
-                        }
-                        else // ref block
-                        {
-                            row_data_ptr = (uint8_t*)&srcp[dmt_row][x + sub_x];
-                        }
 
-                        if (dmt_col == _maxr) // src sample
-                        {
-                            col_data_ptr = (uint8_t*)&pfp[_maxr][x + sub_x];
-                        }
-                        else // ref block
-                        {
-                            col_data_ptr = (uint8_t*)&srcp[dmt_col][x + sub_x];
-                        }
-
-                        i_sum_row_s += INTABS(*row_data_ptr - *col_data_ptr);
-                    }
-
-                    if (i_sum_row_s < i_sum_minrow_s)
-                    {
-                        i_sum_minrow_s = i_sum_row_s;
-                        i_idx_minrow_s = dmt_row;
-                    }
-                }
-
-                if (i_idx_minrow != i_idx_minrow_s)
-                {
-                    int idbr = 0;
-                }
-
-                if (i_sum_minrow != i_sum_minrow_s)
-                {
-                    int idbr = 0;
-                }
-
-#endif
-                // set block of idx_minrow as output block
-                const BYTE* best_data_ptr;
-
-                if (i_idx_minrow == _maxr) // src sample
-                {
-                    best_data_ptr = &pfp[_maxr][x + sub_x];
-
-                }
-                else // ref sample
-                {
-                    best_data_ptr = &srcp[i_idx_minrow][x + sub_x];
-
-#ifdef _DEBUG
-                    iMEL_non_current_samples++;
-#endif
-                }
-
-                if (thUPD > 0) // IIR here
-                {
-                    // IIR - check if memory sample is still good
-                    int idm_mem = INTABS(*best_data_ptr - pMem[x + sub_x]);
-
-                    if ((idm_mem < thUPD) && ((i_sum_minrow + pnew) > pMemSum[x + sub_x]))
-                    {
-                        //mem still good - output mem block
-                        best_data_ptr = &pMem[x + sub_x];
-
-#ifdef _DEBUG
-                        iMEL_mem_hits++;
-#endif
-                    }
-                    else // mem no good - update mem
-                    {
-                        pMem[x + sub_x] = *best_data_ptr;
-                        pMemSum[x + sub_x] = i_sum_minrow;
-                    }
-                }
-
-                // check if best is below thresh-difference from current
-                if (INTABS(*best_data_ptr - pfp[_maxr][x + sub_x]) < thresh)
-                {
-                    dstp[x + sub_x] = *best_data_ptr;
-                }
-                else
-                {
-                    dstp[x + sub_x] = pfp[_maxr][x + sub_x];
-                }
-            } */
-
+            }
         }
 
         for (int i{ 0 }; i < _diameter; ++i)
@@ -1351,362 +994,17 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PV
         pMemSum += width;
     }
 
-#ifdef _DEBUG
-    float fRatioMEL_non_current_samples = (float)iMEL_non_current_samples / (float)(width * height);
-    float fRatioMEL_mem_samples = (float)iMEL_mem_hits / (float)(width * height);
-    int idbr = 0;
-#endif
 }
 
-template void TTempSmooth<true, true>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-template void TTempSmooth<true, false>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-template void TTempSmooth<false, true>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-template void TTempSmooth<false, false>::filterI_mode2_avx2_g_uint8(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-
-
-
-template<bool pfclip, bool fp>
-void TTempSmooth<pfclip, fp>::filterI_mode2_avx2_uint16(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane)
-{
-
-    int DM_table[MAX_TEMP_RAD * 2 + 1][MAX_TEMP_RAD * 2 + 1];
-
-    int src_stride[15]{};
-    int pf_stride[15]{};
-    const int stride{ dst->GetPitch(plane) / 2 };
-    const int width{ dst->GetRowSize(plane) / 2 }; // in samples 
-    const int height{ dst->GetHeight(plane) };
-    const uint16_t* srcp[15]{}, * pfp[15]{};
-
-    const int l{ plane >> 1 };
-    const int thresh{ _thresh[l] << _shift };
-
-    const int thUPD{ _thUPD[l] << _shift };
-    const int pnew{ _pnew[l] << _shift };
-    uint16_t* pMem;
-    if ((plane >> 1) == 0) pMem = reinterpret_cast<uint16_t*>(pIIRMemY);
-    if ((plane >> 1) == 1) pMem = reinterpret_cast<uint16_t*>(pIIRMemU);
-    if ((plane >> 1) == 2) pMem = reinterpret_cast<uint16_t*>(pIIRMemV);
-
-    int* pMemSum;
-    if ((plane >> 1) == 0) pMemSum = pMinSumMemY;
-    if ((plane >> 1) == 1) pMemSum = pMinSumMemU;
-    if ((plane >> 1) == 2) pMemSum = pMinSumMemV;
-
-    const int iMaxSumDM = 65535 * (_maxr * 2 + 1);
-
-    for (int i{ 0 }; i < _diameter; ++i)
-    {
-        src_stride[i] = src[i]->GetPitch(plane) / 2;
-        pf_stride[i] = pf[i]->GetPitch(plane) / 2;
-        srcp[i] = reinterpret_cast<const uint16_t*>(src[i]->GetReadPtr(plane));
-        pfp[i] = reinterpret_cast<const uint16_t*>(pf[i]->GetReadPtr(plane));
-    }
-
-#ifdef _DEBUG
-    iMEL_non_current_samples = 0;
-    iMEL_mem_hits = 0;
-#endif
-
-    uint16_t* dstp{ reinterpret_cast<uint16_t*>(dst->GetWritePtr(plane)) };
-
-    for (int y{ 0 }; y < height; ++y)
-    {
-        for (int x{ 0 }; x < width; x += 32)
-        {
-            // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
-            __m256i ymm_row_l8_1;
-            __m256i ymm_row_l8_2;
-            __m256i ymm_row_h8_1;
-            __m256i ymm_row_h8_2;
-            __m256i ymm_col_l8_1;
-            __m256i ymm_col_l8_2;
-            __m256i ymm_col_h8_1;
-            __m256i ymm_col_h8_2;
-            __m256i ymm_zero = _mm256_setzero_si256();
-
-            __m256i ymm_sum_minrow_l8_1 = _mm256_set1_epi32(iMaxSumDM); // hope 16bit 65535-max diff with tr up to (2x7+1)=15 not overflow signed int ? max tr is 63 ? 
-            __m256i ymm_sum_minrow_l8_2 = _mm256_set1_epi32(iMaxSumDM); // 
-            __m256i ymm_sum_minrow_h8_1 = _mm256_set1_epi32(iMaxSumDM); // 
-            __m256i ymm_sum_minrow_h8_2 = _mm256_set1_epi32(iMaxSumDM); // 
-
-            __m256i ymm_idx_minrow_l8_1 = _mm256_setzero_si256();
-            __m256i ymm_idx_minrow_l8_2 = _mm256_setzero_si256();
-            __m256i ymm_idx_minrow_h8_1 = _mm256_setzero_si256();
-            __m256i ymm_idx_minrow_h8_2 = _mm256_setzero_si256();
-
-
-            for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
-            {
-                __m256i ymm_sum_row_l8_1 = _mm256_setzero_si256();
-                __m256i ymm_sum_row_l8_2 = _mm256_setzero_si256();
-                __m256i ymm_sum_row_h8_1 = _mm256_setzero_si256();
-                __m256i ymm_sum_row_h8_2 = _mm256_setzero_si256();
-
-                for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
-                {
-                    if (dmt_row == dmt_col)
-                    { // block with itself => DM=0
-                        continue;
-                    }
-
-                    // _maxr is current sample, 0,1,2... is -maxr, ... +maxr
-                    uint16_t* row_data_ptr;
-                    uint16_t* col_data_ptr;
-
-                    if (dmt_row == _maxr) // src sample
-                    {
-                        row_data_ptr = (uint16_t*)&pfp[_maxr][x];
-                    }
-                    else // ref block
-                    {
-                        row_data_ptr = (uint16_t*)&srcp[dmt_row][x];
-                    }
-
-                    if (dmt_col == _maxr) // src sample
-                    {
-                        col_data_ptr = (uint16_t*)&pfp[_maxr][x];
-                    }
-                    else // ref block
-                    {
-                        col_data_ptr = (uint16_t*)&srcp[dmt_col][x];
-                    }
-
-                    __m256i ymm_row16_1 = _mm256_load_si256((const __m256i*)row_data_ptr);
-                    __m256i ymm_row16_2 = _mm256_load_si256((const __m256i*)(row_data_ptr + 16)); // in shorts
-                    __m256i ymm_col16_1 = _mm256_load_si256((const __m256i*)col_data_ptr);
-                    __m256i ymm_col16_2 = _mm256_load_si256((const __m256i*)(col_data_ptr + 16)); // in shorts
-
-
-                    ymm_row_l8_1 = _mm256_permute4x64_epi64(ymm_row16_1, 0x10);
-                    ymm_row_l8_2 = _mm256_permute4x64_epi64(ymm_row16_1, 0x32);
-
-                    ymm_row_h8_1 = _mm256_permute4x64_epi64(ymm_row16_2, 0x10);
-                    ymm_row_h8_2 = _mm256_permute4x64_epi64(ymm_row16_2, 0x32);
-
-                    ymm_col_l8_1 = _mm256_permute4x64_epi64(ymm_col16_1, 0x10);
-                    ymm_col_l8_2 = _mm256_permute4x64_epi64(ymm_col16_1, 0x32);
-
-                    ymm_col_h8_1 = _mm256_permute4x64_epi64(ymm_col16_2, 0x10);
-                    ymm_col_h8_2 = _mm256_permute4x64_epi64(ymm_col16_2, 0x32);
-
-                    ymm_row_l8_1 = _mm256_unpacklo_epi16(ymm_row_l8_1, ymm_zero);
-                    ymm_row_l8_2 = _mm256_unpacklo_epi16(ymm_row_l8_2, ymm_zero);
-
-                    ymm_row_h8_1 = _mm256_unpacklo_epi16(ymm_row_h8_1, ymm_zero);
-                    ymm_row_h8_2 = _mm256_unpacklo_epi16(ymm_row_h8_2, ymm_zero);
-
-                    ymm_col_l8_1 = _mm256_unpacklo_epi16(ymm_col_l8_1, ymm_zero);
-                    ymm_col_l8_2 = _mm256_unpacklo_epi16(ymm_col_l8_2, ymm_zero);
-
-                    ymm_col_h8_1 = _mm256_unpacklo_epi16(ymm_col_h8_1, ymm_zero);
-                    ymm_col_h8_2 = _mm256_unpacklo_epi16(ymm_col_h8_2, ymm_zero);
-
-
-                    __m256i ymm_subtr_l8_1 = _mm256_sub_epi32(ymm_row_l8_1, ymm_col_l8_1);
-                    __m256i ymm_subtr_l8_2 = _mm256_sub_epi32(ymm_row_l8_2, ymm_col_l8_2);
-
-                    __m256i ymm_subtr_h8_1 = _mm256_sub_epi32(ymm_row_h8_1, ymm_col_h8_1);
-                    __m256i ymm_subtr_h8_2 = _mm256_sub_epi32(ymm_row_h8_2, ymm_col_h8_2);
-
-                    __m256i ymm_abs_l8_1 = _mm256_abs_epi32(ymm_subtr_l8_1);
-                    __m256i ymm_abs_l8_2 = _mm256_abs_epi32(ymm_subtr_l8_2);
-
-                    __m256i ymm_abs_h8_1 = _mm256_abs_epi32(ymm_subtr_h8_1);
-                    __m256i ymm_abs_h8_2 = _mm256_abs_epi32(ymm_subtr_h8_2);
-
-                    ymm_sum_row_l8_1 = _mm256_add_epi32(ymm_sum_row_l8_1, ymm_abs_l8_1);
-                    ymm_sum_row_l8_2 = _mm256_add_epi32(ymm_sum_row_l8_2, ymm_abs_l8_2);
-
-                    ymm_sum_row_h8_1 = _mm256_add_epi32(ymm_sum_row_h8_1, ymm_abs_h8_1);
-                    ymm_sum_row_h8_2 = _mm256_add_epi32(ymm_sum_row_h8_2, ymm_abs_h8_2);
-
-                }
-
-                __m256i ymm_mask_gt_l8_1 = _mm256_cmpgt_epi32(ymm_sum_minrow_l8_1, ymm_sum_row_l8_1);
-                __m256i ymm_mask_gt_l8_2 = _mm256_cmpgt_epi32(ymm_sum_minrow_l8_2, ymm_sum_row_l8_2);
-
-                __m256i ymm_mask_gt_h8_1 = _mm256_cmpgt_epi32(ymm_sum_minrow_h8_1, ymm_sum_row_h8_1);
-                __m256i ymm_mask_gt_h8_2 = _mm256_cmpgt_epi32(ymm_sum_minrow_h8_2, ymm_sum_row_h8_2);
-
-                __m256i ymm_idx_row = _mm256_set1_epi32(dmt_row);
-
-                ymm_sum_minrow_l8_1 = _mm256_blendv_epi8(ymm_sum_minrow_l8_1, ymm_sum_row_l8_1, ymm_mask_gt_l8_1);
-                ymm_sum_minrow_l8_2 = _mm256_blendv_epi8(ymm_sum_minrow_l8_2, ymm_sum_row_l8_2, ymm_mask_gt_l8_2);
-
-                ymm_sum_minrow_h8_1 = _mm256_blendv_epi8(ymm_sum_minrow_h8_1, ymm_sum_row_h8_1, ymm_mask_gt_h8_1);
-                ymm_sum_minrow_h8_2 = _mm256_blendv_epi8(ymm_sum_minrow_h8_2, ymm_sum_row_h8_2, ymm_mask_gt_h8_2);
-
-                ymm_idx_minrow_l8_1 = _mm256_blendv_epi8(ymm_idx_minrow_l8_1, ymm_idx_row, ymm_mask_gt_l8_1);
-                ymm_idx_minrow_l8_2 = _mm256_blendv_epi8(ymm_idx_minrow_l8_2, ymm_idx_row, ymm_mask_gt_l8_2);
-
-                ymm_idx_minrow_h8_1 = _mm256_blendv_epi8(ymm_idx_minrow_h8_1, ymm_idx_row, ymm_mask_gt_h8_1);
-                ymm_idx_minrow_h8_2 = _mm256_blendv_epi8(ymm_idx_minrow_h8_2, ymm_idx_row, ymm_mask_gt_h8_2);
-
-            }
-
-            for (int sub_x = 0; sub_x < 32; sub_x++)
-            {
-                int i_idx_minrow;
-                int i_sum_minrow;
-
-                if (sub_x < 8)
-                {
-                    i_idx_minrow = my_extract_epi32_from256(ymm_idx_minrow_l8_1, sub_x);
-                    i_sum_minrow = my_extract_epi32_from256(ymm_sum_minrow_l8_1, sub_x);
-                }
-                else if (sub_x < 16)
-                {
-                    i_idx_minrow = my_extract_epi32_from256(ymm_idx_minrow_l8_2, sub_x - 8);
-                    i_sum_minrow = my_extract_epi32_from256(ymm_sum_minrow_l8_2, sub_x - 8);
-                }
-                else if (sub_x < 24)
-                {
-                    i_idx_minrow = my_extract_epi32_from256(ymm_idx_minrow_h8_1, sub_x - 16);
-                    i_sum_minrow = my_extract_epi32_from256(ymm_sum_minrow_h8_1, sub_x - 16);
-                }
-                else
-                {
-                    i_idx_minrow = my_extract_epi32_from256(ymm_idx_minrow_h8_2, sub_x - 24);
-                    i_sum_minrow = my_extract_epi32_from256(ymm_sum_minrow_h8_2, sub_x - 24);
-                }
-
-#ifdef _DEBUG
-
-                // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
-                int i_sum_minrow_s = iMaxSumDM;
-                int i_idx_minrow_s = 0;
-
-                for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
-                {
-                    int i_sum_row_s = 0;
-                    for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
-                    {
-                        if (dmt_row == dmt_col)
-                        { // block with itself => DM=0
-                            continue;
-                        }
-
-                        // _maxr is current sample, 0,1,2... is -maxr, ... +maxr
-                        uint16_t* row_data_ptr;
-                        uint16_t* col_data_ptr;
-
-                        if (dmt_row == _maxr) // src sample
-                        {
-                            row_data_ptr = (uint16_t*)&pfp[_maxr][x + sub_x];
-                        }
-                        else // ref block
-                        {
-                            row_data_ptr = (uint16_t*)&srcp[dmt_row][x + sub_x];
-                        }
-
-                        if (dmt_col == _maxr) // src sample
-                        {
-                            col_data_ptr = (uint16_t*)&pfp[_maxr][x + sub_x];
-                        }
-                        else // ref block
-                        {
-                            col_data_ptr = (uint16_t*)&srcp[dmt_col][x + sub_x];
-                        }
-
-                        i_sum_row_s += INTABS(*row_data_ptr - *col_data_ptr);
-                    }
-
-                    if (i_sum_row_s < i_sum_minrow_s)
-                    {
-                        i_sum_minrow_s = i_sum_row_s;
-                        i_idx_minrow_s = dmt_row;
-                    }
-                }
-
-                if (i_idx_minrow != i_idx_minrow_s)
-                {
-                    int idbr = 0;
-                }
-
-                if (i_sum_minrow != i_sum_minrow_s)
-                {
-                    int idbr = 0;
-                }
-
-#endif
-
-                // set block of idx_minrow as output block
-                const uint16_t* best_data_ptr;
-
-                if (i_idx_minrow == _maxr) // src sample
-                {
-                    best_data_ptr = &pfp[_maxr][x + sub_x];
-
-                }
-                else // ref sample
-                {
-                    best_data_ptr = &srcp[i_idx_minrow][x + sub_x];
-
-#ifdef _DEBUG
-                    iMEL_non_current_samples++;
-#endif
-                }
-
-                if (thUPD > 0) // IIR here
-                {
-                    // IIR - check if memory sample is still good
-                    int idm_mem = INTABS(*best_data_ptr - pMem[x + sub_x]);
-
-                    if ((idm_mem < thUPD) && ((i_sum_minrow + pnew) > pMemSum[x + sub_x]))
-                    {
-                        //mem still good - output mem block
-                        best_data_ptr = &pMem[x + sub_x];
-
-#ifdef _DEBUG
-                        iMEL_mem_hits++;
-#endif
-                    }
-                    else // mem no good - update mem
-                    {
-                        pMem[x + sub_x] = *best_data_ptr;
-                        pMemSum[x + sub_x] = i_sum_minrow;
-                    }
-                }
-
-                // check if best is below thresh-difference from current src
-                if (INTABS(*best_data_ptr - pfp[_maxr][x + sub_x]) < thresh)
-                {
-                    dstp[x + sub_x] = *best_data_ptr;
-                }
-                else
-                {
-                    dstp[x + sub_x] = pfp[_maxr][x + sub_x];
-                }
-            }
-
-        }
-
-        for (int i{ 0 }; i < _diameter; ++i)
-        {
-            srcp[i] += src_stride[i];
-            pfp[i] += pf_stride[i];
-        }
-
-        dstp += stride;
-        pMem += width;// mem_stride in 16bit ??
-        pMemSum += width;
-    }
-
-#ifdef _DEBUG
-    float fRatioMEL_non_current_samples = (float)iMEL_non_current_samples / (float)(width * height);
-    float fRatioMEL_mem_samples = (float)iMEL_mem_hits / (float)(width * height);
-    int idbr = 0;
-#endif
-}
-
-template void TTempSmooth<true, true>::filterI_mode2_avx2_uint16(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-template void TTempSmooth<true, false>::filterI_mode2_avx2_uint16(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-template void TTempSmooth<false, true>::filterI_mode2_avx2_uint16(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-template void TTempSmooth<false, false>::filterI_mode2_avx2_uint16(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-
-
-
+template void TTempSmooth<true, true>::filterI_mode2_avx2<uint8_t>(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+template void TTempSmooth<true, false>::filterI_mode2_avx2<uint8_t>(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+template void TTempSmooth<false, true>::filterI_mode2_avx2<uint8_t>(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+template void TTempSmooth<false, false>::filterI_mode2_avx2<uint8_t>(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+
+template void TTempSmooth<true, true>::filterI_mode2_avx2<uint16_t>(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+template void TTempSmooth<true, false>::filterI_mode2_avx2<uint16_t>(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+template void TTempSmooth<false, true>::filterI_mode2_avx2<uint16_t>(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+template void TTempSmooth<false, false>::filterI_mode2_avx2<uint16_t>(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 
 
 
