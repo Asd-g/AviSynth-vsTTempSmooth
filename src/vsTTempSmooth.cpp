@@ -649,8 +649,11 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
     else
         _opt = 0;
 
-    if (!(_pmode == 1 && (_opt == 0 || _opt == 2)))
-        env->ThrowError("vsTTempSmooth: pmode=1 requires AVX2.");
+    if (_pmode == 1)
+    {
+        if (!(_opt == 0 || _opt == 2))
+            env->ThrowError("vsTTempSmooth: pmode=1 requires either opt=0 or opt=2.");
+    }
 
     if (_opt == 3)
     {
