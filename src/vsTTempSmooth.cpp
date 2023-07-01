@@ -267,6 +267,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
     const int thresh{ _thresh[l] << _shift };
 
     const int thUPD{ _thUPD[l] << _shift };
+    const int pnew{ _pnew[l] << _shift };
     uint8_t* pMem;
     if ((plane >> 1) == 0) pMem = pIIRMemY;
     if ((plane >> 1) == 1) pMem = pIIRMemU;
@@ -408,7 +409,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
                 // IIR - check if memory sample is still good
                 int idm_mem = INTABS(*best_data_ptr - pMem[x]);
 
-                if ((idm_mem < thUPD) && (i_sum_minrow >= pMemSum[x]))
+                if ((idm_mem < thUPD) && ((i_sum_minrow + pnew) >= pMemSum[x]))
                 {
                     //mem still good - output mem block
                     best_data_ptr = &pMem[x];
