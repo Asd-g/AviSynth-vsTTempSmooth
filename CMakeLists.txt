@@ -7,6 +7,7 @@ set(sources ${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_AVX2.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_AVX512.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/VCL2/instrset_detect.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_pmode1_AVX2.cpp
 )
 
 if (WIN32)
@@ -35,8 +36,6 @@ if (NOT CMAKE_GENERATOR MATCHES "Visual Studio")
         target_compile_definitions(vsTTempSmooth PRIVATE RELEASE_BUILD)
     endif()
 
-    target_compile_options(vsTTempSmooth PRIVATE $<$<CONFIG:Release>:-s>)
-
     message(STATUS "Build type - ${CMAKE_BUILD_TYPE}")
 endif()
 
@@ -44,10 +43,12 @@ target_compile_features(vsTTempSmooth PRIVATE cxx_std_17)
 
 if (MSVC)
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_AVX2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_pmode1_AVX2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_AVX512.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
 else()
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_SSE2.cpp PROPERTIES COMPILE_OPTIONS "-mfpmath=sse;-msse2")
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_AVX2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_pmode1_AVX2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_AVX512.cpp PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512dq;-mavx512vl;-mfma")
 endif()
 
@@ -56,7 +57,7 @@ target_link_libraries(vsTTempSmooth PRIVATE avisynth)
 if (MINGW)
     set_target_properties(vsTTempSmooth PROPERTIES PREFIX "")
 
-    target_link_libraries(vsTTempSmooth PRIVATE -static-libstdc++ -static -lwinpthread)
+    target_link_libraries(vsTTempSmooth PRIVATE -static-libstdc++ -static -lwinpthread -s)
 endif()
 
 if (UNIX)
