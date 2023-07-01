@@ -665,8 +665,20 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
     {
         switch (vi.ComponentSize())
         {
-            case 1: compare = ComparePlane_avx2<uint8_t>; break;
-            case 2: compare = ComparePlane_avx2<uint16_t>; break;
+            case 1:
+            {
+                compare = ComparePlane_avx2<uint8_t>;
+                if (_pmode == 1)
+                    filter_mode2 = &TTempSmooth::filterI_mode2_avx2<uint8_t>;
+                break;
+            }
+            case 2:
+            {
+                compare = ComparePlane_avx2<uint16_t>;
+                if (_pmode == 1)
+                    filter_mode2 = &TTempSmooth::filterI_mode2_avx2<uint16_t>;
+                break;
+            }
             default: compare = ComparePlane_avx2<float>;
         }
     }
@@ -683,8 +695,20 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
     {
         switch (vi.ComponentSize())
         {
-            case 1: compare = ComparePlane<uint8_t>; break;
-            case 2: compare = ComparePlane<uint16_t>; break;
+            case 1:
+            {
+                compare = ComparePlane<uint8_t>;
+                if (_pmode == 1)
+                    filter_mode2 = &TTempSmooth::filterI_mode2_C<uint8_t>;
+                break;
+            }
+            case 2:
+            {
+                compare = ComparePlane<uint16_t>;
+                if (_pmode == 1)
+                    filter_mode2 = &TTempSmooth::filterI_mode2_C<uint16_t>;
+                break;
+            }
             default: compare = ComparePlane<float>;
         }
     }
@@ -696,7 +720,7 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
     iDM_cache_hits = 0;
 #endif
 
-    }
+}
 
 template <bool pfclip, bool fp>
 TTempSmooth<pfclip, fp>::~TTempSmooth(void)
@@ -788,6 +812,12 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
     {
         if (proccesplanes[i] == 3)
         {
+            if (_pmode == 1)
+            {
+                (this->*filter_mode2)(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
+                continue;
+            }
+
             if (_opt == 3)
             {
                 switch (vi.ComponentSize())
@@ -823,12 +853,6 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                 {
                     case 1:
                     {
-                        if (_pmode == 1)
-                        {
-                            TTempSmooth::filterI_mode2_avx2<uint8_t>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
-                            break;
-                        }
-
                         if (_thresh[i] > _mdiff[i] + 1)
                             TTempSmooth::filterI_avx2<uint8_t, true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
@@ -837,12 +861,6 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                     }
                     case 2:
                     {
-                        if (_pmode == 1)
-                        {
-                            TTempSmooth::filterI_mode2_avx2<uint16_t>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
-                            break;
-                        }
-
                         if (_thresh[i] > _mdiff[i] + 1)
                             TTempSmooth::filterI_avx2<uint16_t, true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
@@ -893,12 +911,6 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                 {
                     case 1:
                     {
-                        if (_pmode == 1)
-                        {
-                            TTempSmooth::filterI_mode2_C<uint8_t>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
-                            break;
-                        }
-
                         if (_thresh[i] > _mdiff[i] + 1)
                             TTempSmooth::filterI<uint8_t, true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
@@ -907,12 +919,6 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                     }
                     case 2:
                     {
-                        if (_pmode == 1)
-                        {
-                            TTempSmooth::filterI_mode2_C<uint16_t>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
-                            break;
-                        }
-
                         if (_thresh[i] > _mdiff[i] + 1)
                             TTempSmooth::filterI<uint16_t, true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
