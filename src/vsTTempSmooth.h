@@ -4,11 +4,12 @@
 #include <array>
 #include <vector>
 
-#include "include\avisynth.h"
+#include "avisynth.h"
 
 #define MAX_TEMP_RAD 128
 
-AVS_FORCEINLINE unsigned int INTABS(int x) { return (x < 0) ? -x : x; }
+[[maybe_unused]]
+static AVS_FORCEINLINE unsigned int INTABS(int x) { return (x < 0) ? -x : x; }
 
 template<bool pfclip, bool fp>
 class TTempSmooth : public GenericVideoFilter
@@ -93,6 +94,3 @@ template <typename T>
 float ComparePlane_avx2(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
 template <typename T>
 float ComparePlane_avx512(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
-
-// need forceinline ?
-unsigned int INTABS(int x);
