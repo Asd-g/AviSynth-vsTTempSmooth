@@ -329,7 +329,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
 
                     if (dmt_col == 0) // src sample
                     {
-                        col_data_ptr = (uint8_t*)&pfp[_maxr][x];;
+                        col_data_ptr = (uint8_t*)&pfp[_maxr][x];
                     }
                     else // ref block
                     {
@@ -408,7 +408,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
                 // IIR - check if memory sample is still good
                 int idm_mem = INTABS(*best_data_ptr - pMem[x]);
 
-                if ((idm_mem < thUPD) && (i_sum_minrow > pMemSum[x]))
+                if ((idm_mem < thUPD) && (i_sum_minrow >= pMemSum[x]))
                 {
                     //mem still good - output mem block
                     best_data_ptr = &pMem[x];
@@ -421,10 +421,6 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
                 {
                     pMem[x] = *best_data_ptr;
                     pMemSum[x] = i_sum_minrow;
-
-#ifdef _DEBUG
-                    iMEL_mem_updates++;
-#endif
                 }
             }
 
@@ -434,7 +430,9 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
                 dstp[x] = *best_data_ptr;
             }
             else
+            {
                 dstp[x] = srcp[_maxr][x];
+            }
 
         }
 
@@ -559,11 +557,16 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
         pIIRMemY = (uint8_t*)malloc(vi_src.width * vi_src.height * vi_src.ComponentSize());
         pMinSumMemY = (int*)malloc(vi_src.width * vi_src.height * sizeof(int));
         if (vi_src.ComponentSize() == 1)
-            memset(pMinSumMemY, 255, vi_src.width * vi_src.height);
+        {
+            for (int i = 0; i < vi_src.width * vi_src.height; i++) pMinSumMemY[i] = 255;
+        }
+        //			memset(pMinSumMemY, 255, vi_src.width * vi_src.height);
         else if (vi_src.ComponentSize() == 2)
-            memset(pMinSumMemY, 65535, vi_src.width * vi_src.height);
+            for (int i = 0; i < vi_src.width * vi_src.height; i++) pMinSumMemY[i] = 65535;
+        //			memset(pMinSumMemY, 65535, vi_src.width * vi_src.height);
         else
-            memset(pMinSumMemY, 65535, vi_src.width * vi_src.height); // ? 2.0f ?
+            for (int i = 0; i < vi_src.width * vi_src.height; i++) pMinSumMemY[i] = 65535;
+        //			memset(pMinSumMemY, 65535, vi_src.width * vi_src.height); // ? 2.0f ?
 
     }
 
