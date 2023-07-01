@@ -6,7 +6,9 @@
 
 #include "include\avisynth.h"
 
-#define MAX_TEMP_RAD 128 
+#define MAX_TEMP_RAD 128
+
+AVS_FORCEINLINE unsigned int INTABS(int x) { return (x < 0) ? -x : x; }
 
 template<bool pfclip, bool fp>
 class TTempSmooth : public GenericVideoFilter

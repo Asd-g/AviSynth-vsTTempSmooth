@@ -1,9 +1,6 @@
 #include "VCL2/instrset.h"
 #include "vsTTempSmooth.h"
 
-// need forceinline ?
-unsigned int INTABS(int x) { return (x < 0) ? -x : x; }
-
 template <bool pfclip, bool fp>
 template <typename T, bool useDiff>
 void TTempSmooth<pfclip, fp>::filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept
