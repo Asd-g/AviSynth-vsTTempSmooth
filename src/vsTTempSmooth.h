@@ -4,7 +4,9 @@
 #include <array>
 #include <vector>
 
-#include "avisynth.h"
+#include "include\avisynth.h"
+
+#define MAX_TEMP_RAD 7
 
 template<bool pfclip, bool fp>
 class TTempSmooth : public GenericVideoFilter
@@ -22,6 +24,8 @@ class TTempSmooth : public GenericVideoFilter
     PClip _pfclip;
     bool has_at_least_v8;
     int _opt;
+
+    int _pmode;
 
     template<typename T, bool useDiff>
     void filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
@@ -45,8 +49,19 @@ class TTempSmooth : public GenericVideoFilter
 
     float (*compare)(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
 
+    void filterI_mode2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+
+
+#ifdef _DEBUG
+    //MEL debug stat
+    int iMEL_non_current_samples;
+    int iMEL_mem_hits;
+    int iMEL_mem_updates;
+    int iDM_cache_hits;
+#endif
+
 public:
-    TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, int y, int u, int v, PClip pfclip_, int opt, IScriptEnvironment* env);
+    TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, IScriptEnvironment* env);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
     int __stdcall SetCacheHints(int cachehints, int frame_range) override
     {
