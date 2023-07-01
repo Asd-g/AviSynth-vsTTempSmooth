@@ -1,6 +1,51 @@
 #include "VCL2/vectorclass.h"
 #include "vsTTempSmooth.h"
 
+short my_extract_epi16_from256(__m256i ymm_data, int idx)
+{
+    __m256i ymm_low8;
+    if (idx > 7)
+    {
+        ymm_low8 = _mm256_permute2x128_si256(ymm_data, ymm_data, 1);
+        idx -= 8;
+    }
+    else
+        ymm_low8 = ymm_data;
+
+    //	ymm_low8 = _mm256_srli_si256(ymm_low8, idx);
+
+    __m128i xmm_low8 = _mm256_castsi256_si128(ymm_low8);
+
+    switch (idx)
+    {
+        case 7:
+            xmm_low8 = _mm_srli_si128(xmm_low8, 14);
+            break;
+        case 6:
+            xmm_low8 = _mm_srli_si128(xmm_low8, 12);
+            break;
+        case 5:
+            xmm_low8 = _mm_srli_si128(xmm_low8, 10);
+            break;
+        case 4:
+            xmm_low8 = _mm_srli_si128(xmm_low8, 8);
+            break;
+        case 3:
+            xmm_low8 = _mm_srli_si128(xmm_low8, 6);
+            break;
+        case 2:
+            xmm_low8 = _mm_srli_si128(xmm_low8, 4);
+            break;
+        case 1:
+            xmm_low8 = _mm_srli_si128(xmm_low8, 2);
+            break;
+    }
+
+    int extr = _mm_cvtsi128_si32(xmm_low8);
+
+    return (short)extr;
+}
+
 template <typename T>
 AVS_FORCEINLINE static Vec8i load(const void* p)
 {
@@ -409,6 +454,289 @@ template void TTempSmooth<false, true>::filterI_avx2<uint16_t, true>(PVideoFrame
 template void TTempSmooth<false, false>::filterI_avx2<uint16_t, true>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 template void TTempSmooth<false, true>::filterI_avx2<uint16_t, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 template void TTempSmooth<false, false>::filterI_avx2<uint16_t, false>(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+
+
+template<bool pfclip, bool fp>
+void TTempSmooth<pfclip, fp>::filterI_mode2_avx2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane)
+{
+
+    int DM_table[MAX_TEMP_RAD * 2 + 1][MAX_TEMP_RAD * 2 + 1];
+
+    int src_stride[15]{};
+    int pf_stride[15]{};
+    const int stride{ dst->GetPitch(plane) };
+    const int width{ dst->GetRowSize(plane) };
+    const int height{ dst->GetHeight(plane) };
+    const uint8_t* srcp[15]{}, * pfp[15]{};
+
+    const int l{ plane >> 1 };
+    const int thresh{ _thresh[l] << _shift };
+
+    const int thUPD{ _thUPD[l] << _shift };
+    const int pnew{ _pnew[l] << _shift };
+    uint8_t* pMem;
+    if ((plane >> 1) == 0) pMem = pIIRMemY;
+    if ((plane >> 1) == 1) pMem = pIIRMemU;
+    if ((plane >> 1) == 2) pMem = pIIRMemV;
+
+    int* pMemSum;
+    if ((plane >> 1) == 0) pMemSum = pMinSumMemY;
+    if ((plane >> 1) == 1) pMemSum = pMinSumMemU;
+    if ((plane >> 1) == 2) pMemSum = pMinSumMemV;
+
+    const int iMaxSumDM = 255 * (_maxr * 2 + 1);
+
+    for (int i{ 0 }; i < _diameter; ++i)
+    {
+        src_stride[i] = src[i]->GetPitch(plane);
+        pf_stride[i] = pf[i]->GetPitch(plane);
+        srcp[i] = reinterpret_cast<const uint8_t*>(src[i]->GetReadPtr(plane));
+        pfp[i] = reinterpret_cast<const uint8_t*>(pf[i]->GetReadPtr(plane));
+    }
+
+#ifdef _DEBUG
+    iMEL_non_current_samples = 0;
+    iMEL_mem_hits = 0;
+#endif
+
+    uint8_t* dstp{ reinterpret_cast<uint8_t*>(dst->GetWritePtr(plane)) };
+
+    for (int y{ 0 }; y < height; ++y)
+    {
+        for (int x{ 0 }; x < width; x += 32)
+        {
+            // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
+            __m256i ymm_row_l16;
+            __m256i ymm_row_h16;
+            __m256i ymm_col_l16;
+            __m256i ymm_col_h16;
+            __m256i ymm_zero = _mm256_setzero_si256();
+
+            __m256i ymm_sum_minrow_l16 = _mm256_set1_epi16((short)iMaxSumDM); // hope 8bit 255-max diff with tr up to (2x7+1)=15 not overflow signed short ? max tr is 63 ? 
+            __m256i ymm_sum_minrow_h16 = _mm256_set1_epi16((short)iMaxSumDM); // hope 8bit 255-max diff with tr up to (2x7+1)=15 not overflow signed short ? max tr is 63 ? 
+            __m256i ymm_idx_minrow_l16 = _mm256_setzero_si256();
+            __m256i ymm_idx_minrow_h16 = _mm256_setzero_si256();
+
+            for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
+            {
+                __m256i ymm_sum_row_l16 = _mm256_setzero_si256();
+                __m256i ymm_sum_row_h16 = _mm256_setzero_si256();
+
+                for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
+                {
+                    if (dmt_row == dmt_col)
+                    { // block with itself => DM=0
+                        continue;
+                    }
+
+                    // _maxr is current sample, 0,1,2... is -maxr, ... +maxr
+                    uint8_t* row_data_ptr;
+                    uint8_t* col_data_ptr;
+
+                    if (dmt_row == _maxr) // src sample
+                    {
+                        row_data_ptr = (uint8_t*)&pfp[_maxr][x];
+                    }
+                    else // ref block
+                    {
+                        row_data_ptr = (uint8_t*)&srcp[dmt_row][x];
+                    }
+
+                    if (dmt_col == _maxr) // src sample
+                    {
+                        col_data_ptr = (uint8_t*)&pfp[_maxr][x];
+                    }
+                    else // ref block
+                    {
+                        col_data_ptr = (uint8_t*)&srcp[dmt_col][x];
+                    }
+
+                    __m256i ymm_row32 = _mm256_load_si256((const __m256i*)row_data_ptr);
+                    __m256i ymm_col32 = _mm256_load_si256((const __m256i*)col_data_ptr);
+
+                    ymm_row_l16 = _mm256_permute4x64_epi64(ymm_row32, 0x50);
+                    ymm_row_h16 = _mm256_permute4x64_epi64(ymm_row32, 0xFA);
+
+                    ymm_col_l16 = _mm256_permute4x64_epi64(ymm_col32, 0x50);
+                    ymm_col_h16 = _mm256_permute4x64_epi64(ymm_col32, 0xFA);
+
+                    ymm_row_l16 = _mm256_unpacklo_epi8(ymm_row_l16, ymm_zero);
+                    ymm_row_h16 = _mm256_unpacklo_epi8(ymm_row_h16, ymm_zero);
+
+                    ymm_col_l16 = _mm256_unpacklo_epi8(ymm_col_l16, ymm_zero);
+                    ymm_col_h16 = _mm256_unpacklo_epi8(ymm_col_h16, ymm_zero);
+
+                    __m256i ymm_subtr_l16 = _mm256_sub_epi16(ymm_row_l16, ymm_col_l16);
+                    __m256i ymm_subtr_h16 = _mm256_sub_epi16(ymm_row_h16, ymm_col_h16);
+
+                    __m256i ymm_abs_l16 = _mm256_abs_epi16(ymm_subtr_l16);
+                    __m256i ymm_abs_h16 = _mm256_abs_epi16(ymm_subtr_h16);
+
+                    ymm_sum_row_l16 = _mm256_add_epi16(ymm_sum_row_l16, ymm_abs_l16);
+                    ymm_sum_row_h16 = _mm256_add_epi16(ymm_sum_row_h16, ymm_abs_h16);
+                }
+
+                __m256i ymm_mask_gt_l16 = _mm256_cmpgt_epi16(ymm_sum_minrow_l16, ymm_sum_row_l16);
+                __m256i ymm_mask_gt_h16 = _mm256_cmpgt_epi16(ymm_sum_minrow_h16, ymm_sum_row_h16);
+
+                __m256i ymm_idx_row = _mm256_set1_epi16((short)dmt_row);
+
+                ymm_sum_minrow_l16 = _mm256_blendv_epi8(ymm_sum_minrow_l16, ymm_sum_row_l16, ymm_mask_gt_l16);
+                ymm_sum_minrow_h16 = _mm256_blendv_epi8(ymm_sum_minrow_h16, ymm_sum_row_h16, ymm_mask_gt_h16);
+
+                ymm_idx_minrow_l16 = _mm256_blendv_epi8(ymm_idx_minrow_l16, ymm_idx_row, ymm_mask_gt_l16);
+                ymm_idx_minrow_h16 = _mm256_blendv_epi8(ymm_idx_minrow_h16, ymm_idx_row, ymm_mask_gt_h16);
+
+            }
+
+            for (int sub_x = 0; sub_x < 32; sub_x++)
+            {
+                int i_idx_minrow;
+                int i_sum_minrow;
+
+                if (sub_x < 16)
+                {
+                    i_idx_minrow = my_extract_epi16_from256(ymm_idx_minrow_l16, sub_x);
+                    i_sum_minrow = my_extract_epi16_from256(ymm_sum_minrow_l16, sub_x);
+                }
+                else
+                {
+                    i_idx_minrow = my_extract_epi16_from256(ymm_idx_minrow_h16, sub_x - 16);
+                    i_sum_minrow = my_extract_epi16_from256(ymm_sum_minrow_h16, sub_x - 16);
+                }
+#ifdef _DEBUG
+
+                // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
+                int i_sum_minrow_s = iMaxSumDM;
+                int i_idx_minrow_s = 0;
+
+                for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
+                {
+                    int i_sum_row_s = 0;
+                    for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
+                    {
+                        if (dmt_row == dmt_col)
+                        { // block with itself => DM=0
+                            continue;
+                        }
+
+                        // _maxr is current sample, 0,1,2... is -maxr, ... +maxr
+                        uint8_t* row_data_ptr;
+                        uint8_t* col_data_ptr;
+
+                        if (dmt_row == _maxr) // src sample
+                        {
+                            row_data_ptr = (uint8_t*)&pfp[_maxr][x + sub_x];
+                        }
+                        else // ref block
+                        {
+                            row_data_ptr = (uint8_t*)&srcp[dmt_row][x + sub_x];
+                        }
+
+                        if (dmt_col == _maxr) // src sample
+                        {
+                            col_data_ptr = (uint8_t*)&pfp[_maxr][x + sub_x];
+                        }
+                        else // ref block
+                        {
+                            col_data_ptr = (uint8_t*)&srcp[dmt_col][x + sub_x];
+                        }
+
+                        i_sum_row_s += INTABS(*row_data_ptr - *col_data_ptr);
+                    }
+
+                    if (i_sum_row_s < i_sum_minrow_s)
+                    {
+                        i_sum_minrow_s = i_sum_row_s;
+                        i_idx_minrow_s = dmt_row;
+                    }
+                }
+
+                if (i_idx_minrow != i_idx_minrow_s)
+                {
+                    int idbr = 0;
+                }
+
+                if (i_sum_minrow != i_sum_minrow_s)
+                {
+                    int idbr = 0;
+                }
+
+#endif
+                // set block of idx_minrow as output block
+                const BYTE* best_data_ptr;
+
+                if (i_idx_minrow == _maxr) // src sample
+                {
+                    best_data_ptr = &pfp[_maxr][x + sub_x];
+
+                }
+                else // ref sample
+                {
+                    best_data_ptr = &srcp[i_idx_minrow][x + sub_x];
+
+#ifdef _DEBUG
+                    iMEL_non_current_samples++;
+#endif
+                }
+
+                if (thUPD > 0) // IIR here
+                {
+                    // IIR - check if memory sample is still good
+                    int idm_mem = INTABS(*best_data_ptr - pMem[x + sub_x]);
+
+                    if ((idm_mem < thUPD) && ((i_sum_minrow + pnew) >= pMemSum[x + sub_x]))
+                    {
+                        //mem still good - output mem block
+                        best_data_ptr = &pMem[x + sub_x];
+
+#ifdef _DEBUG
+                        iMEL_mem_hits++;
+#endif
+                    }
+                    else // mem no good - update mem
+                    {
+                        pMem[x + sub_x] = *best_data_ptr;
+                        pMemSum[x + sub_x] = i_sum_minrow;
+                    }
+                }
+
+                // check if best is below thresh-difference from current
+                if (INTABS(*best_data_ptr - srcp[_maxr][x + sub_x]) < thresh)
+                {
+                    dstp[x + sub_x] = *best_data_ptr;
+                }
+                else
+                {
+                    dstp[x + sub_x] = srcp[_maxr][x + sub_x];
+                }
+            }
+
+        }
+
+        for (int i{ 0 }; i < _diameter; ++i)
+        {
+            srcp[i] += src_stride[i];
+            pfp[i] += pf_stride[i];
+        }
+
+        dstp += stride;
+        pMem += width;// mem_stride; ??
+        pMemSum += width;
+    }
+
+#ifdef _DEBUG
+    float fRatioMEL_non_current_samples = (float)iMEL_non_current_samples / (float)(width * height);
+    float fRatioMEL_mem_samples = (float)iMEL_mem_hits / (float)(width * height);
+    int idbr = 0;
+#endif
+}
+
+template void TTempSmooth<true, true>::filterI_mode2_avx2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+template void TTempSmooth<true, false>::filterI_mode2_avx2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+template void TTempSmooth<false, true>::filterI_mode2_avx2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+template void TTempSmooth<false, false>::filterI_mode2_avx2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+
 
 template <bool pfclip, bool fp>
 template <bool useDiff>

@@ -4,7 +4,6 @@
 // need forceinline ?
 unsigned int INTABS(int x) { return (x < 0) ? -x : x; }
 
-
 template <bool pfclip, bool fp>
 template <typename T, bool useDiff>
 void TTempSmooth<pfclip, fp>::filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept
@@ -934,6 +933,12 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                 {
                     case 1:
                     {
+                        if (_pmode == 1)
+                        {
+                            TTempSmooth::filterI_mode2_avx2(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
+                            break;
+                        }
+
                         if (_thresh[i] > _mdiff[i] + 1)
                             TTempSmooth::filterI_avx2<uint8_t, true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
