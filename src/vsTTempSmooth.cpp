@@ -389,7 +389,6 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
             // set block of idx_minrow as output block
             const BYTE* best_data_ptr;
 
-            //			if (i_idx_minrow == 0) // src sample
             if (i_idx_minrow == _maxr) // src sample
             {
                 best_data_ptr = &pfp[_maxr][x];
@@ -397,7 +396,6 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
             }
             else // ref sample
             {
-                //				best_data_ptr = &srcp[i_idx_minrow - 1][x];
                 best_data_ptr = &srcp[i_idx_minrow][x];
 
 #ifdef _DEBUG
