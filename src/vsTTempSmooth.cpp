@@ -477,6 +477,20 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
         env->ThrowError("vsTTempSmooth: scthresh must be between 0.0..100.0.");
     if (_opt < -1 || _opt > 3)
         env->ThrowError("vsTTempSmooth: opt must be between -1..3.");
+    if (_pmode < 0 || _pmode > 1)
+        env->ThrowError("vsTTempSmooth: pmode must be either 0 or 1.");
+    if (ythupd < 0)
+        env->ThrowError("vsTTempSmooth: ythupd must be greater than 0.");
+    if (uthupd < 0)
+        env->ThrowError("vsTTempSmooth: uthupd must be greater than 0.");
+    if (vthupd < 0)
+        env->ThrowError("vsTTempSmooth: vthupd must be greater than 0.");
+    if (ypnew < 0)
+        env->ThrowError("vsTTempSmooth: ypnew must be greater than 0.");
+    if (upnew < 0)
+        env->ThrowError("vsTTempSmooth: upnew must be greater than 0.");
+    if (vpnew < 0)
+        env->ThrowError("vsTTempSmooth: vpnew must be greater than 0.");
 
     const int iset{ instrset_detect() };
 
@@ -633,6 +647,9 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
     else
         _opt = 0;
 
+    if (!(_pmode == 1 && (_opt == 0 || _opt == 2)))
+        env->ThrowError("vsTTempSmooth: pmode=1 requires AVX2.");
+
     if (_opt == 3)
     {
         switch (vi.ComponentSize())
@@ -658,8 +675,8 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
             case 1: compare = ComparePlane_sse2<uint8_t>; break;
             case 2: compare = ComparePlane_sse2<uint16_t>; break;
             default: compare = ComparePlane_sse2<float>;
-        }
     }
+}
     else
     {
         switch (vi.ComponentSize())
@@ -677,7 +694,7 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
     iDM_cache_hits = 0;
 #endif
 
-}
+        }
 
 template <bool pfclip, bool fp>
 TTempSmooth<pfclip, fp>::~TTempSmooth(void)
