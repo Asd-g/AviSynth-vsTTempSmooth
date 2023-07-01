@@ -30,6 +30,10 @@ class TTempSmooth : public GenericVideoFilter
     uint8_t* pIIRMemU;
     uint8_t* pIIRMemV;
     int _thUPD[3];
+    int* pMinSumMemY;
+    int* pMinSumMemU;
+    int* pMinSumMemV;
+
 
     template<typename T, bool useDiff>
     void filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
