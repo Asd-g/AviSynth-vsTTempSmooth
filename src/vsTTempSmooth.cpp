@@ -1100,7 +1100,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                     {
                         if (_pmode == 1)
                         {
-                            TTempSmooth::filterI_mode2_avx2_uint8(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
+                            TTempSmooth::filterI_mode2_avx2_g_uint8(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                             break;
                         }
 
