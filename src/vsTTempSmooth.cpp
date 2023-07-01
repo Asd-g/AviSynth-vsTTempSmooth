@@ -278,6 +278,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
     if ((plane >> 1) == 1) pMemSum = pMinSumMemU;
     if ((plane >> 1) == 2) pMemSum = pMinSumMemV;
 
+    const int iMaxSumDM = 255 * (_maxr * 2 + 1);
 
     for (int i{ 0 }; i < _diameter; ++i)
     {
@@ -298,20 +299,142 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
     {
         for (int x{ 0 }; x < width; ++x)
         {
-            // 
+            /*
+                        // old method with building DM table first (slower)
+                        for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
+                        {
+                            for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
+                            {
+                                if (dmt_row == dmt_col)
+                                {
+                                    DM_table[dmt_row][dmt_col] = 0; // sample with itself
+                                    continue;
+                                }
+
+                                // calc table triangle first (performance optimization)
+                                if (dmt_col > dmt_row)
+                                {
+                                    continue;
+                                }
+
+                                // _maxr is current sample, 0,1,2... is -maxr, ... +maxr
+                                uint8_t* row_data_ptr;
+                                uint8_t* col_data_ptr;
+
+                                if (dmt_row == _maxr) // src sample
+                                {
+                                    row_data_ptr = (uint8_t*)&pfp[_maxr][x];
+                                }
+                                else // ref block
+                                {
+                                    row_data_ptr = (uint8_t*)&srcp[dmt_row][x];
+                                }
+
+                                if (dmt_col == _maxr) // src sample
+                                {
+                                    col_data_ptr = (uint8_t*)&pfp[_maxr][x];
+                                }
+                                else // ref block
+                                {
+                                    col_data_ptr = (uint8_t*)&srcp[dmt_col][x];
+                                }
+
+
+                                DM_table[dmt_row][dmt_col] = INTABS(*row_data_ptr - *col_data_ptr);
+                            }
+                        }
+
+
+                        // restore full table each row
+                        for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
+                        {
+                            for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
+                            {
+                                if (dmt_row == dmt_col)
+                                { // block with itself
+                                    continue;
+                                }
+
+                                if (dmt_col > dmt_row)
+                                {
+                                    DM_table[dmt_row][dmt_col] = DM_table[dmt_col][dmt_row];
+                                }
+                            }
+                        }
+
+                        // find lowest sum of row in DM_table ?
+
+                        int SumRows[(MAX_TEMP_RAD * 2) + 1] = { 0 };
+
+                        for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
+                        {
+                            int i_sum_row = 0;
+                            for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
+                            {
+                                i_sum_row += DM_table[dmt_row][dmt_col];
+                            }
+
+                            SumRows[dmt_row] = i_sum_row;
+                        }
+
+                        int i_sum_minrow = SumRows[0];
+                        int i_idx_minrow = 0;
+
+                        for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
+                        {
+                            if (SumRows[dmt_row] < i_sum_minrow)
+                            {
+                                i_sum_minrow = SumRows[dmt_row];
+                                i_idx_minrow = dmt_row;
+                            }
+                        }
+                */
+
+
+                /*
+                // find lowest sum of row in DM_table and index of row in single DM scan
+                int i_sum_minrow = iMaxSumDM;// max sum ?SumRows[0];
+                int i_idx_minrow = 0;
+
+                for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
+                {
+                    int i_sum_row = 0;
+                    for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
+                    {
+                        if (dmt_row == dmt_col)
+                        { // block with itself => DM=0
+                            continue;
+                        }
+
+                        if (dmt_col > dmt_row)
+                        {
+                            i_sum_row += DM_table[dmt_col][dmt_row];
+                        }
+                        else
+                        {
+                            i_sum_row += DM_table[dmt_row][dmt_col];
+                        }
+                    }
+
+                    if (i_sum_row < i_sum_minrow)
+                    {
+                        i_sum_minrow = i_sum_row;
+                        i_idx_minrow = dmt_row;
+                    }
+                }
+                */
+
+                // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
+            int i_sum_minrow = iMaxSumDM;
+            int i_idx_minrow = 0;
+
             for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
             {
+                int i_sum_row = 0;
                 for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
                 {
                     if (dmt_row == dmt_col)
-                    {
-                        DM_table[dmt_row][dmt_col] = 0; // sample with itself
-                        continue;
-                    }
-
-                    // calc table triangle first (performance optimization)
-                    if (dmt_col > dmt_row)
-                    {
+                    { // block with itself => DM=0
                         continue;
                     }
 
@@ -337,55 +460,16 @@ void TTempSmooth<pfclip, fp>::filterI_mode2(PVideoFrame src[15], PVideoFrame pf[
                         col_data_ptr = (uint8_t*)&srcp[dmt_col][x];
                     }
 
-
-                    DM_table[dmt_row][dmt_col] = INTABS(*row_data_ptr - *col_data_ptr);
-                    //#endif
-                }
-            }
-
-            // restore full table each row
-            for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
-            {
-                for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
-                {
-                    if (dmt_row == dmt_col)
-                    { // block with itself
-                        continue;
-                    }
-
-                    if (dmt_col > dmt_row)
-                    {
-                        DM_table[dmt_row][dmt_col] = DM_table[dmt_col][dmt_row];
-                    }
-                }
-            }
-
-            // find lowest sum of row in DM_table ?
-
-            int SumRows[(MAX_TEMP_RAD * 2) + 1] = { 0 };
-
-            for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
-            {
-                int i_sum_row = 0;
-                for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
-                {
-                    i_sum_row += DM_table[dmt_row][dmt_col];
+                    i_sum_row += INTABS(*row_data_ptr - *col_data_ptr);
                 }
 
-                SumRows[dmt_row] = i_sum_row;
-            }
-
-            int i_sum_minrow = SumRows[0];
-            int i_idx_minrow = 0;
-
-            for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
-            {
-                if (SumRows[dmt_row] < i_sum_minrow)
+                if (i_sum_row < i_sum_minrow)
                 {
-                    i_sum_minrow = SumRows[dmt_row];
+                    i_sum_minrow = i_sum_row;
                     i_idx_minrow = dmt_row;
                 }
             }
+
 
             // set block of idx_minrow as output block
             const BYTE* best_data_ptr;
