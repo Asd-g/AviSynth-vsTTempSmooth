@@ -479,6 +479,8 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
         env->ThrowError("vsTTempSmooth: opt must be between -1..3.");
     if (_pmode < 0 || _pmode > 1)
         env->ThrowError("vsTTempSmooth: pmode must be either 0 or 1.");
+    if (_pmode == 1 && vi.ComponentSize() == 4)
+        env->ThrowError("vsTTempSmooth: pmode=1 - 32-bit bit depth isn't supported.");
     if (ythupd < 0)
         env->ThrowError("vsTTempSmooth: ythupd must be greater than 0.");
     if (uthupd < 0)
@@ -675,8 +677,8 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
             case 1: compare = ComparePlane_sse2<uint8_t>; break;
             case 2: compare = ComparePlane_sse2<uint16_t>; break;
             default: compare = ComparePlane_sse2<float>;
+        }
     }
-}
     else
     {
         switch (vi.ComponentSize())
@@ -694,7 +696,7 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
     iDM_cache_hits = 0;
 #endif
 
-        }
+    }
 
 template <bool pfclip, bool fp>
 TTempSmooth<pfclip, fp>::~TTempSmooth(void)
