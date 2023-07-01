@@ -26,6 +26,10 @@ class TTempSmooth : public GenericVideoFilter
     int _opt;
 
     int _pmode;
+    uint8_t* pIIRMemY;
+    uint8_t* pIIRMemU;
+    uint8_t* pIIRMemV;
+    int _thUPD[3];
 
     template<typename T, bool useDiff>
     void filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
@@ -59,9 +63,12 @@ class TTempSmooth : public GenericVideoFilter
     int iMEL_mem_updates;
     int iDM_cache_hits;
 #endif
+    ~TTempSmooth(void);
 
 public:
-    TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, IScriptEnvironment* env);
+    TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh,
+        int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd,
+        IScriptEnvironment* env);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
     int __stdcall SetCacheHints(int cachehints, int frame_range) override
     {
