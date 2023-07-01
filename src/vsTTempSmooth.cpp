@@ -508,14 +508,14 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C_uint8(PVideoFrame src[15], PVideoF
                 }
             }
 
-            // check if best is below thresh-difference from current
-            if (INTABS(*best_data_ptr - srcp[_maxr][x]) < thresh)
+            // check if best is below thresh-difference from current src
+            if (INTABS(*best_data_ptr - pfp[_maxr][x]) < thresh)
             {
                 dstp[x] = *best_data_ptr;
             }
             else
             {
-                dstp[x] = srcp[_maxr][x];
+                dstp[x] = pfp[_maxr][x];
             }
 
         }
@@ -673,14 +673,14 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C_uint16(PVideoFrame src[15], PVideo
                 }
             }
 
-            // check if best is below thresh-difference from current
-            if (INTABS(*best_data_ptr - srcp[_maxr][x]) < thresh)
+            // check if best is below thresh-difference from current src
+            if (INTABS(*best_data_ptr - pfp[_maxr][x]) < thresh)
             {
                 dstp[x] = *best_data_ptr;
             }
             else
             {
-                dstp[x] = srcp[_maxr][x];
+                dstp[x] = pfp[_maxr][x];
             }
 
         }
@@ -1020,6 +1020,12 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
 {
     PVideoFrame src[MAX_TEMP_RAD * 2 + 1] = {};
     PVideoFrame pf[MAX_TEMP_RAD * 2 + 1] = {};
+
+    //DEBUG
+    if (n == 3)
+    {
+        int idbr = 1;
+    }
 
     for (int i{ n - _maxr }; i <= n + _maxr; ++i)
     {
