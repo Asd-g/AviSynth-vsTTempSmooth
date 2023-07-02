@@ -107,22 +107,22 @@ void TTempSmooth<pfclip, fp>::filterI_avx2(PVideoFrame src[15], PVideoFrame pf[1
                         const auto& t2_01{ t1_01 };
                         t1_01 = load<T>(&pfp[frameIndex][x]);
                         diff01 = abs(c01 - t1_01);
-                        const auto check_v1_01{ diff01 < thresh && abs(t1_01 - t2_01) < thresh };
+                        const auto check_v1_01{ diff01 < thresh&& abs(t1_01 - t2_01) < thresh };
 
                         const auto& t2_02{ t1_02 };
                         t1_02 = load<T>(&pfp[frameIndex][x + 8]);
                         diff02 = abs(c02 - t1_02);
-                        const auto check_v1_02{ diff02 < thresh && abs(t1_02 - t2_02) < thresh };
+                        const auto check_v1_02{ diff02 < thresh&& abs(t1_02 - t2_02) < thresh };
 
                         const auto& t2_03{ t1_03 };
                         t1_03 = load<T>(&pfp[frameIndex][x + 16]);
                         diff03 = abs(c03 - t1_03);
-                        const auto check_v1_03{ diff03 < thresh && abs(t1_03 - t2_03) < thresh };
+                        const auto check_v1_03{ diff03 < thresh&& abs(t1_03 - t2_03) < thresh };
 
                         const auto& t2_04{ t1_04 };
                         t1_04 = load<T>(&pfp[frameIndex][x + 24]);
                         diff04 = abs(c04 - t1_04);
-                        const auto check_v1_04{ diff04 < thresh && abs(t1_04 - t2_04) < thresh };
+                        const auto check_v1_04{ diff04 < thresh&& abs(t1_04 - t2_04) < thresh };
 
                         weight01 = (useDiff) ? lookup<1792>((diff01 >> _shift) + v, weightSaved) : weightSaved[frameIndex];
                         weight02 = (useDiff) ? lookup<1792>((diff02 >> _shift) + v, weightSaved) : weightSaved[frameIndex];
@@ -187,22 +187,22 @@ void TTempSmooth<pfclip, fp>::filterI_avx2(PVideoFrame src[15], PVideoFrame pf[1
                         const auto& t2_01{ t1_01 };
                         t1_01 = load<T>(&pfp[frameIndex][x]);
                         diff01 = abs(c01 - t1_01);
-                        const auto check_v1_01{ diff01 < thresh && abs(t1_01 - t2_01) < thresh };
+                        const auto check_v1_01{ diff01 < thresh&& abs(t1_01 - t2_01) < thresh };
 
                         const auto& t2_02{ t1_02 };
                         t1_02 = load<T>(&pfp[frameIndex][x + 8]);
                         diff02 = abs(c02 - t1_02);
-                        const auto check_v1_02{ diff02 < thresh && abs(t1_02 - t2_02) < thresh };
+                        const auto check_v1_02{ diff02 < thresh&& abs(t1_02 - t2_02) < thresh };
 
                         const auto& t2_03{ t1_03 };
                         t1_03 = load<T>(&pfp[frameIndex][x + 16]);
                         diff03 = abs(c03 - t1_03);
-                        const auto check_v1_03{ diff03 < thresh && abs(t1_03 - t2_03) < thresh };
+                        const auto check_v1_03{ diff03 < thresh&& abs(t1_03 - t2_03) < thresh };
 
                         const auto& t2_04{ t1_04 };
                         t1_04 = load<T>(&pfp[frameIndex][x + 24]);
                         diff04 = abs(c04 - t1_04);
-                        const auto check_v1_04{ diff04 < thresh && abs(t1_04 - t2_04) < thresh };
+                        const auto check_v1_04{ diff04 < thresh&& abs(t1_04 - t2_04) < thresh };
 
                         weight01 = (useDiff) ? lookup<1792>((diff01 >> _shift) + v, weightSaved) : weightSaved[frameIndex];
                         weight02 = (useDiff) ? lookup<1792>((diff02 >> _shift) + v, weightSaved) : weightSaved[frameIndex];
@@ -296,12 +296,12 @@ void TTempSmooth<pfclip, fp>::filterI_avx2(PVideoFrame src[15], PVideoFrame pf[1
                         const auto& t2_01{ t1_01 };
                         t1_01 = load<T>(&pfp[frameIndex][x]);
                         diff01 = abs(c01 - t1_01);
-                        const auto check_v1_01{ diff01 < thresh && abs(t1_01 - t2_01) < thresh };
+                        const auto check_v1_01{ diff01 < thresh&& abs(t1_01 - t2_01) < thresh };
 
                         const auto& t2_02{ t1_02 };
                         t1_02 = load<T>(&pfp[frameIndex][x + 8]);
                         diff02 = abs(c02 - t1_02);
-                        const auto check_v1_02{ diff02 < thresh && abs(t1_02 - t2_02) < thresh };
+                        const auto check_v1_02{ diff02 < thresh&& abs(t1_02 - t2_02) < thresh };
 
                         weight01 = (useDiff) ? lookup<1792>((diff01 >> _shift) + v, weightSaved) : lookup<1792>(Vec8i(frameIndex), weightSaved);
                         weight02 = (useDiff) ? lookup<1792>((diff02 >> _shift) + v, weightSaved) : lookup<1792>(Vec8i(frameIndex), weightSaved);
@@ -346,12 +346,12 @@ void TTempSmooth<pfclip, fp>::filterI_avx2(PVideoFrame src[15], PVideoFrame pf[1
                         const auto& t2_01{ t1_01 };
                         t1_01 = load<T>(&pfp[frameIndex][x]);
                         diff01 = abs(c01 - t1_01);
-                        const auto check_v1_01{ diff01 < thresh && abs(t1_01 - t2_01) < thresh };
+                        const auto check_v1_01{ diff01 < thresh&& abs(t1_01 - t2_01) < thresh };
 
                         const auto& t2_02{ t1_02 };
                         t1_02 = load<T>(&pfp[frameIndex][x + 8]);
                         diff02 = abs(c02 - t1_02);
-                        const auto check_v1_02{ diff02 < thresh && abs(t1_02 - t2_02) < thresh };
+                        const auto check_v1_02{ diff02 < thresh&& abs(t1_02 - t2_02) < thresh };
 
                         weight01 = (useDiff) ? lookup<1792>((diff01 >> _shift) + v, weightSaved) : lookup<1792>(Vec8i(frameIndex), weightSaved);
                         weight02 = (useDiff) ? lookup<1792>((diff02 >> _shift) + v, weightSaved) : lookup<1792>(Vec8i(frameIndex), weightSaved);
@@ -465,7 +465,7 @@ void TTempSmooth<pfclip, fp>::filterF_avx2(PVideoFrame src[15], PVideoFrame pf[1
                     const auto& t2{ t1 };
                     t1 = Vec8f().load(&pfp[frameIndex][x]);
                     diff = min(abs(c - t1), 1.0f);
-                    const auto check_v1{ diff < thresh && min(abs(t1 - t2), 1.0f) < thresh };
+                    const auto check_v1{ diff < thresh&& min(abs(t1 - t2), 1.0f) < thresh };
 
                     weight = (useDiff) ? lookup<1792>(truncatei(diff * 255.0f) + v, weightSaved) : lookup<1792>(Vec8i(frameIndex), weightSaved);
                     weights = select(check_v1, weights + weight, weights);
@@ -496,7 +496,7 @@ void TTempSmooth<pfclip, fp>::filterF_avx2(PVideoFrame src[15], PVideoFrame pf[1
                     const auto& t2{ t1 };
                     t1 = Vec8f().load(&pfp[frameIndex][x]);
                     diff = min(abs(c - t1), 1.0f);
-                    const auto check_v1{ diff < thresh && min(abs(t1 - t2), 1.0f) < thresh };
+                    const auto check_v1{ diff < thresh&& min(abs(t1 - t2), 1.0f) < thresh };
 
                     weight = (useDiff) ? lookup<1792>(truncatei(diff * 255.0f) + v, weightSaved) : lookup<1792>(Vec8i(frameIndex), weightSaved);
                     weights = select(check_v1, weights + weight, weights);

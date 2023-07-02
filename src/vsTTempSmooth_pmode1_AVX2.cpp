@@ -63,7 +63,7 @@ template<bool pfclip, bool fp>
 template<typename T>
 void TTempSmooth<pfclip, fp>::filterI_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane)
 {
-    __m256i alignas(32) Temp256[(MAX_TEMP_RAD * 2 + 1) * 4];
+    alignas(32) __m256i Temp256[(MAX_TEMP_RAD * 2 + 1) * 4];
     __m256i* pTemp256 = &Temp256[0];
 
     int src_stride[(MAX_TEMP_RAD * 2 + 1)]{};
