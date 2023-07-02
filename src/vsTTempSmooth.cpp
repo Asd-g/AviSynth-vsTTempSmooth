@@ -248,7 +248,7 @@ void TTempSmooth<pfclip, fp>::filterF(PVideoFrame src[15], PVideoFrame pf[15], P
 
 template<bool pfclip, bool fp>
 template<typename T>
-void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane)
+void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane)
 {
     int src_stride[(MAX_TEMP_RAD * 2 + 1)]{};
     int pf_stride[(MAX_TEMP_RAD * 2 + 1)]{};
@@ -261,11 +261,6 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 
 
     typedef typename std::conditional < sizeof(T) <= 2, int, float>::type working_t;
 
-    /*
-    const int thresh{ _thresh[l] << _shift };
-
-    const int thUPD{ _thUPD[l] << _shift };
-    const int pnew{ _pnew[l] << _shift }; */
     const working_t thresh = (sizeof(T) <= 2) ? (_thresh[l] << _shift)  : (_thresh[l] << _shift) / 256.0f;
 
     const working_t thUPD = (sizeof(T) <= 2) ? (_thUPD[l] << _shift ) : (_thUPD[l] << _shift) / 256.0f;
@@ -276,13 +271,11 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 
     if ((plane >> 1) == 1) pMem = reinterpret_cast<T*>(pIIRMemU);
     if ((plane >> 1) == 2) pMem = reinterpret_cast<T*>(pIIRMemV);
 
-//    int* pMemSum = 0;
     working_t* pMemSum = 0;
     if ((plane >> 1) == 0) pMemSum = (working_t*)pMinSumMemY;
     if ((plane >> 1) == 1) pMemSum = (working_t*)pMinSumMemU;
     if ((plane >> 1) == 2) pMemSum = (working_t*)pMinSumMemV;
 
-//    const int iMaxSumDM = (sizeof(T) < 2) ? 255 * (_maxr * 2 + 1) : 65535 * (_maxr * 2 + 1);
     const working_t MaxSumDM = (sizeof(T) < 2) ? 255 * (_maxr * 2 + 1) : 65535 * (_maxr * 2 + 1); // 65535 is enough max for float too
 
     for (int i{ 0 }; i < _diameter; ++i)
@@ -306,13 +299,11 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 
         {
 
             // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
-//            int i_sum_minrow = iMaxSumDM;
             working_t wt_sum_minrow = MaxSumDM;
             int i_idx_minrow = 0;
 
             for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
             {
-//                int i_sum_row = 0;
                 working_t wt_sum_row = 0;
                 for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
                 {
@@ -343,7 +334,6 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 
                         col_data_ptr = (T*)&srcp[dmt_col][x];
                     }
 
-//                    i_sum_row += INTABS(*row_data_ptr - *col_data_ptr);
                     wt_sum_minrow += (sizeof(T) <= 2) ? INTABS(*row_data_ptr - *col_data_ptr) : fabsf(*row_data_ptr - *col_data_ptr);
                 }
 
@@ -375,7 +365,6 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 
             if (thUPD > 0) // IIR here
             {
                 // IIR - check if memory sample is still good
-//                int idm_mem = INTABS(*best_data_ptr - pMem[x]);
                 working_t idm_mem = (sizeof(T) <= 2) ? INTABS(*best_data_ptr - pMem[x]) : fabsf(*best_data_ptr - pMem[x]);
 
                 if ((idm_mem < thUPD) && (wt_sum_minrow + pnew) > pMemSum[x])
@@ -494,8 +483,8 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
         env->ThrowError("vsTTempSmooth: opt must be between -1..3.");
     if (_pmode < 0 || _pmode > 1)
         env->ThrowError("vsTTempSmooth: pmode must be either 0 or 1.");
-    if (_pmode == 1 && vi.ComponentSize() == 4 && _opt != 0)
-        env->ThrowError("vsTTempSmooth: pmode=1 - 32-bit bit depth require opt = 0.");
+    if (_pmode == 1 && vi.ComponentSize() == 4 && _opt != 0 && _opt != 2)
+        env->ThrowError("vsTTempSmooth: pmode=1 - 32-bit bit depth require opt = 0 or opt = 2.");
     if (ythupd < 0)
         env->ThrowError("vsTTempSmooth: ythupd must be greater than 0.");
     if (uthupd < 0)
@@ -711,6 +700,8 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
                 break;
             }
             default: compare = ComparePlane_avx2<float>;
+                if (_pmode == 1)
+                    filter_mode2 = &TTempSmooth::filterF_mode2_avx2;
         }
     }
     else if (_opt == 1)
@@ -730,14 +721,14 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
             {
                 compare = ComparePlane<uint8_t>;
                 if (_pmode == 1)
-                    filter_mode2 = &TTempSmooth::filterI_mode2_C<uint8_t>;
+                    filter_mode2 = &TTempSmooth::filter_mode2_C<uint8_t>;
                 break;
             }
             case 2:
             {
                 compare = ComparePlane<uint16_t>;
                 if (_pmode == 1)
-                    filter_mode2 = &TTempSmooth::filterI_mode2_C<uint16_t>;
+                    filter_mode2 = &TTempSmooth::filter_mode2_C<uint16_t>;
                 break;
             }
             default:
@@ -753,7 +744,6 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
     iMEL_non_current_samples = 0;
     iMEL_mem_hits = 0;
     iMEL_mem_updates = 0;
-    iDM_cache_hits = 0;
 #endif
 
 }
