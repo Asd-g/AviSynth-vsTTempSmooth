@@ -258,21 +258,32 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 
     const T* srcp[(MAX_TEMP_RAD * 2 + 1)]{}, * pfp[(MAX_TEMP_RAD * 2 + 1)]{};
 
     const int l{ plane >> 1 };
+
+    typedef typename std::conditional < sizeof(T) <= 2, int, float>::type working_t;
+
+    /*
     const int thresh{ _thresh[l] << _shift };
 
     const int thUPD{ _thUPD[l] << _shift };
-    const int pnew{ _pnew[l] << _shift };
+    const int pnew{ _pnew[l] << _shift }; */
+    const working_t thresh = (sizeof(T) <= 2) ? (_thresh[l] << _shift)  : (_thresh[l] << _shift) / 256.0f;
+
+    const working_t thUPD = (sizeof(T) <= 2) ? (_thUPD[l] << _shift ) : (_thUPD[l] << _shift) / 256.0f;
+    const working_t pnew = (sizeof(T) <= 2) ? (_pnew[l] << _shift ) : (_pnew[l] << _shift) / 256.0f;
+
     T* pMem = 0;
     if ((plane >> 1) == 0) pMem = reinterpret_cast<T*>(pIIRMemY);
     if ((plane >> 1) == 1) pMem = reinterpret_cast<T*>(pIIRMemU);
     if ((plane >> 1) == 2) pMem = reinterpret_cast<T*>(pIIRMemV);
 
-    int* pMemSum = 0;
-    if ((plane >> 1) == 0) pMemSum = pMinSumMemY;
-    if ((plane >> 1) == 1) pMemSum = pMinSumMemU;
-    if ((plane >> 1) == 2) pMemSum = pMinSumMemV;
+//    int* pMemSum = 0;
+    working_t* pMemSum = 0;
+    if ((plane >> 1) == 0) pMemSum = (working_t*)pMinSumMemY;
+    if ((plane >> 1) == 1) pMemSum = (working_t*)pMinSumMemU;
+    if ((plane >> 1) == 2) pMemSum = (working_t*)pMinSumMemV;
 
-    const int iMaxSumDM = (sizeof(T) < 2) ? 255 * (_maxr * 2 + 1) : 65535 * (_maxr * 2 + 1);
+//    const int iMaxSumDM = (sizeof(T) < 2) ? 255 * (_maxr * 2 + 1) : 65535 * (_maxr * 2 + 1);
+    const working_t MaxSumDM = (sizeof(T) < 2) ? 255 * (_maxr * 2 + 1) : 65535 * (_maxr * 2 + 1); // 65535 is enough max for float too
 
     for (int i{ 0 }; i < _diameter; ++i)
     {
@@ -295,12 +306,14 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 
         {
 
             // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
-            int i_sum_minrow = iMaxSumDM;
+//            int i_sum_minrow = iMaxSumDM;
+            working_t wt_sum_minrow = MaxSumDM;
             int i_idx_minrow = 0;
 
             for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
             {
-                int i_sum_row = 0;
+//                int i_sum_row = 0;
+                working_t wt_sum_row = 0;
                 for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
                 {
                     if (dmt_row == dmt_col)
@@ -330,12 +343,13 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 
                         col_data_ptr = (T*)&srcp[dmt_col][x];
                     }
 
-                    i_sum_row += INTABS(*row_data_ptr - *col_data_ptr);
+//                    i_sum_row += INTABS(*row_data_ptr - *col_data_ptr);
+                    wt_sum_minrow += (sizeof(T) <= 2) ? INTABS(*row_data_ptr - *col_data_ptr) : fabsf(*row_data_ptr - *col_data_ptr);
                 }
 
-                if (i_sum_row < i_sum_minrow)
+                if (wt_sum_row < wt_sum_minrow)
                 {
-                    i_sum_minrow = i_sum_row;
+                    wt_sum_minrow = wt_sum_row;
                     i_idx_minrow = dmt_row;
                 }
             }
@@ -361,9 +375,10 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 
             if (thUPD > 0) // IIR here
             {
                 // IIR - check if memory sample is still good
-                int idm_mem = INTABS(*best_data_ptr - pMem[x]);
+//                int idm_mem = INTABS(*best_data_ptr - pMem[x]);
+                working_t idm_mem = (sizeof(T) <= 2) ? INTABS(*best_data_ptr - pMem[x]) : fabsf(*best_data_ptr - pMem[x]);
 
-                if ((idm_mem < thUPD) && ((i_sum_minrow + pnew) > pMemSum[x]))
+                if ((idm_mem < thUPD) && (wt_sum_minrow + pnew) > pMemSum[x])
                 {
                     //mem still good - output mem block
                     best_data_ptr = &pMem[x];
@@ -375,12 +390,12 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 
                 else // mem no good - update mem
                 {
                     pMem[x] = *best_data_ptr;
-                    pMemSum[x] = i_sum_minrow;
+                    pMemSum[x] = wt_sum_minrow;
                 }
             }
 
             // check if best is below thresh-difference from current src
-            if (INTABS(*best_data_ptr - pfp[_maxr][x]) < thresh)
+            if (((sizeof(T) <= 2) ? INTABS(*best_data_ptr - pfp[_maxr][x]) : fabsf(*best_data_ptr - pfp[_maxr][x])) < thresh)
             {
                 dstp[x] = *best_data_ptr;
             }
@@ -479,8 +494,8 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
         env->ThrowError("vsTTempSmooth: opt must be between -1..3.");
     if (_pmode < 0 || _pmode > 1)
         env->ThrowError("vsTTempSmooth: pmode must be either 0 or 1.");
-    if (_pmode == 1 && vi.ComponentSize() == 4)
-        env->ThrowError("vsTTempSmooth: pmode=1 - 32-bit bit depth isn't supported.");
+    if (_pmode == 1 && vi.ComponentSize() == 4 && _opt != 0)
+        env->ThrowError("vsTTempSmooth: pmode=1 - 32-bit bit depth require opt = 0.");
     if (ythupd < 0)
         env->ThrowError("vsTTempSmooth: ythupd must be greater than 0.");
     if (uthupd < 0)
@@ -529,8 +544,6 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
         iMaxSum = 255 * _maxr;
     else if (vi_src.ComponentSize() == 2)
         iMaxSum = 65535 * _maxr;
-    else
-        iMaxSum = 65553 * _maxr; // 2.0f ?
 
 
     if (_thUPD[0] > 0)
@@ -538,7 +551,12 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
         pIIRMemY = (uint8_t*)malloc(vi_src.width * vi_src.height * vi_src.ComponentSize());
         pMinSumMemY = (int*)malloc(vi_src.width * vi_src.height * sizeof(int));
 
-        for (int i = 0; i < vi_src.width * vi_src.height; i++) pMinSumMemY[i] = iMaxSum;
+        if (vi_src.ComponentSize() <= 2)
+        {
+            for (int i = 0; i < vi_src.width * vi_src.height; i++) pMinSumMemY[i] = iMaxSum;
+        }
+        else
+            for (int i = 0; i < vi_src.width * vi_src.height; i++) ((float*)pMinSumMemY)[i] = 2.0f;
 
     }
 
@@ -547,7 +565,12 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
         pIIRMemU = (uint8_t*)malloc(vi_src.width * vi_src.height * vi_src.ComponentSize());
         pMinSumMemU = (int*)malloc(vi_src.width * vi_src.height * sizeof(int));
 
-        for (int i = 0; i < vi_src.width * vi_src.height; i++) pMinSumMemU[i] = iMaxSum;
+        if (vi_src.ComponentSize() <= 2)
+        {
+            for (int i = 0; i < vi_src.width * vi_src.height; i++) pMinSumMemU[i] = iMaxSum;
+        }
+        else
+            for (int i = 0; i < vi_src.width * vi_src.height; i++) ((float*)pMinSumMemU)[i] = 2.0f;
 
     }
 
@@ -556,7 +579,12 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
         pIIRMemV = (uint8_t*)malloc(vi_src.width * vi_src.height * vi_src.ComponentSize());
         pMinSumMemV = (int*)malloc(vi_src.width * vi_src.height * sizeof(int));
 
-        for (int i = 0; i < vi_src.width * vi_src.height; i++) pMinSumMemV[i] = iMaxSum;
+        if (vi_src.ComponentSize() <= 2)
+        {
+            for (int i = 0; i < vi_src.width * vi_src.height; i++) pMinSumMemV[i] = iMaxSum;
+        }
+        else
+            for (int i = 0; i < vi_src.width * vi_src.height; i++) ((float*)pMinSumMemV)[i] = 2.0f;
     }
 
 
@@ -712,7 +740,12 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
                     filter_mode2 = &TTempSmooth::filterI_mode2_C<uint16_t>;
                 break;
             }
-            default: compare = ComparePlane<float>;
+            default:
+            {
+                compare = ComparePlane<float>;
+                if (_pmode == 1)
+                    filter_mode2 = &TTempSmooth::filterI_mode2_C<float>;
+            }
         }
     }
 
