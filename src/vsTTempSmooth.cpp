@@ -483,8 +483,8 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
         env->ThrowError("vsTTempSmooth: opt must be between -1..3.");
     if (_pmode < 0 || _pmode > 1)
         env->ThrowError("vsTTempSmooth: pmode must be either 0 or 1.");
-    if (_pmode == 1 && vi.ComponentSize() == 4 && _opt != 0 && _opt != 2)
-        env->ThrowError("vsTTempSmooth: pmode=1 - 32-bit bit depth require opt = 0 or opt = 2.");
+    if (_pmode == 1 && vi.ComponentSize() == 4 && _opt != 0 && _opt != 2 && _opt != 3)
+        env->ThrowError("vsTTempSmooth: pmode=1 - 32-bit bit depth require opt = 0 or opt = 2 or opt = 3.");
     if (ythupd < 0)
         env->ThrowError("vsTTempSmooth: ythupd must be greater than 0.");
     if (uthupd < 0)
@@ -668,8 +668,8 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
 
     if (_pmode == 1)
     {
-        if (!(_opt == 0 || _opt == 2))
-            env->ThrowError("vsTTempSmooth: pmode=1 requires either opt=0 or opt=2.");
+        if (!(_opt == 0 || _opt == 2 || _opt == 3))
+            env->ThrowError("vsTTempSmooth: pmode=1 requires either opt=0 or opt=2 or opt=3.");
     }
 
     if (_opt == 3)
@@ -679,6 +679,8 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
             case 1: compare = ComparePlane_avx512<uint8_t>; break;
             case 2: compare = ComparePlane_avx512<uint16_t>; break;
             default: compare = ComparePlane_avx512<float>;
+                if (_pmode == 1)
+                    filter_mode2 = &TTempSmooth::filterF_mode2_avx512;
         }
     }
     else if (_opt == 2)
