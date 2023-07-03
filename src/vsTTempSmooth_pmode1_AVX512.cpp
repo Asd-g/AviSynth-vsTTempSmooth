@@ -1,8 +1,6 @@
 #include "vsTTempSmooth.h"
 #include "immintrin.h"
 
-#define SIMD_AVX512_SPP 64
-
 #if 0 
 
 #define unpck_ymm32_to_4ymm8(ymm_src32, ymm_l8_1, ymm_l8_2, ymm_h8_1, ymm_h8_2) \
@@ -487,6 +485,11 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
 
     const __m512 zmm_zero = _mm512_setzero_ps();
     const __m512 sign_bit = _mm512_set1_ps(-0.0f);
+    const __m256 sign_bit_256 = _mm256_set1_ps(-0.0f);
+
+    const __m256i ymm_idx_mul = _mm256_set1_epi32(SIMD_AVX2_SPP);
+    const __m256i ymm_idx_add_l8_1 = _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0);
+    const __m256i ymm_idx_add_l8_2 = _mm256_set_epi32(15, 14, 13, 12, 11, 10, 9, 8);
 
     const __m512i zmm_idx_mul = _mm512_set1_epi32(SIMD_AVX512_SPP);
     const __m512i zmm_idx_add_l16_1 = _mm512_set_epi32(15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0);
@@ -497,7 +500,9 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
 
     for (int y{ 0 }; y < height; ++y)
     {
-        for (int x{ 0 }; x < width; x += 64)
+        const int col64 = width - (width % SIMD_AVX512_SPP);
+
+        for (int x{ 0 }; x < col64; x += SIMD_AVX512_SPP)
         {
             // copy all input frames processed samples in SIMD pass in the temp buf in float32 form
             for (int i = 0; i < (_maxr * 2 + 1); i++)
@@ -757,6 +762,180 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
             _mm512_store_ps((pDst + 32), zmm_out_h16_1);
             _mm512_store_ps((pDst + 48), zmm_out_h16_2); // frame width 720 - buffer overrun ?? VirtualDub crash
          
+        }
+
+        // process last columns with 16 AVX2 - may be make it inline function to reuse from _AVX2.cpp ?
+        for (int x{ col64 }; x < width; x += 16)
+        {
+            // copy all input frames processed samples in SIMD pass in the temp buf in float32 form
+            for (int i = 0; i < (_maxr * 2 + 1); i++)
+            {
+                float* data_ptr;
+                if (i == _maxr) // src sample
+                {
+                    data_ptr = (float*)&pfp[_maxr][x];
+                }
+                else // ref sample
+                {
+                    data_ptr = (float*)&srcp[i][x];
+                }
+
+                __m256 ymm_l8_1, ymm_l8_2;
+
+                ymm_l8_1 = _mm256_load_ps(data_ptr);
+                ymm_l8_2 = _mm256_load_ps((data_ptr + 8));
+
+                _mm256_store_ps((float*)(pTemp512 + (int64_t)i * 4 + 0), ymm_l8_1);
+                _mm256_store_ps((float*)(pTemp512 + (int64_t)i * 4 + 1), ymm_l8_2);
+            }
+
+            // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
+            __m256 ymm_row_l8_1, ymm_row_l8_2;
+            __m256 ymm_col_l8_1, ymm_col_l8_2;
+
+            __m256 ymm_sum_minrow_l8_1 = _mm256_set1_ps(fMaxSumDM);
+            __m256 ymm_sum_minrow_l8_2 = _mm256_set1_ps(fMaxSumDM);
+
+            __m256i ymm_idx_minrow_l8_1 = _mm256_setzero_si256();
+            __m256i ymm_idx_minrow_l8_2 = _mm256_setzero_si256();
+
+
+            for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
+            {
+                __m256 ymm_sum_row_l8_1 = _mm256_setzero_ps();
+                __m256 ymm_sum_row_l8_2 = _mm256_setzero_ps();
+
+                for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
+                {
+                    if (dmt_row == dmt_col)
+                    { // samples with itselves => DM=0
+                        continue;
+                    }
+                    __m256* row_data_ptr = (__m256*)&pTemp512[dmt_row * 4];
+                    __m256* col_data_ptr = (__m256*)&pTemp512[dmt_col * 4];
+
+                    ymm_row_l8_1 = _mm256_load_ps((float*)(row_data_ptr + 0));
+                    ymm_row_l8_2 = _mm256_load_ps((float*)(row_data_ptr + 1));
+
+                    ymm_col_l8_1 = _mm256_load_ps((float*)(col_data_ptr + 0));
+                    ymm_col_l8_2 = _mm256_load_ps((float*)(col_data_ptr + 1));
+
+                    __m256 ymm_subtr_l8_1 = _mm256_sub_ps(ymm_row_l8_1, ymm_col_l8_1);
+                    __m256 ymm_subtr_l8_2 = _mm256_sub_ps(ymm_row_l8_2, ymm_col_l8_2);
+
+                    __m256 ymm_abs_l8_1 = _mm256_andnot_ps(sign_bit_256, ymm_subtr_l8_1);
+                    __m256 ymm_abs_l8_2 = _mm256_andnot_ps(sign_bit_256, ymm_subtr_l8_2);
+
+                    ymm_sum_row_l8_1 = _mm256_add_ps(ymm_sum_row_l8_1, ymm_abs_l8_1);
+                    ymm_sum_row_l8_2 = _mm256_add_ps(ymm_sum_row_l8_2, ymm_abs_l8_2);
+
+                }
+
+                __m256 ymm_mask_gt_l8_1 = _mm256_cmp_ps(ymm_sum_minrow_l8_1, ymm_sum_row_l8_1, _CMP_GT_OQ);
+                __m256 ymm_mask_gt_l8_2 = _mm256_cmp_ps(ymm_sum_minrow_l8_2, ymm_sum_row_l8_2, _CMP_GT_OQ);
+
+                __m256i ymm_idx_row = _mm256_set1_epi32(dmt_row);
+
+                ymm_sum_minrow_l8_1 = _mm256_blendv_ps(ymm_sum_minrow_l8_1, ymm_sum_row_l8_1, ymm_mask_gt_l8_1);
+                ymm_sum_minrow_l8_2 = _mm256_blendv_ps(ymm_sum_minrow_l8_2, ymm_sum_row_l8_2, ymm_mask_gt_l8_2);
+
+                ymm_idx_minrow_l8_1 = _mm256_blendv_epi8(ymm_idx_minrow_l8_1, ymm_idx_row, _mm256_castps_si256(ymm_mask_gt_l8_1));
+                ymm_idx_minrow_l8_2 = _mm256_blendv_epi8(ymm_idx_minrow_l8_2, ymm_idx_row, _mm256_castps_si256(ymm_mask_gt_l8_2));
+            }
+
+            ymm_idx_minrow_l8_1 = _mm256_mullo_epi32(ymm_idx_minrow_l8_1, ymm_idx_mul);
+            ymm_idx_minrow_l8_2 = _mm256_mullo_epi32(ymm_idx_minrow_l8_2, ymm_idx_mul);
+
+            ymm_idx_minrow_l8_1 = _mm256_add_epi32(ymm_idx_minrow_l8_1, ymm_idx_add_l8_1);
+            ymm_idx_minrow_l8_2 = _mm256_add_epi32(ymm_idx_minrow_l8_2, ymm_idx_add_l8_2);
+
+            __m256 ymm_best_l8_1 = _mm256_i32gather_ps((float*)pTemp512, ymm_idx_minrow_l8_1, 4);
+            __m256 ymm_best_l8_2 = _mm256_i32gather_ps((float*)pTemp512, ymm_idx_minrow_l8_2, 4);
+
+            // load and unpack pMem and pMemSum
+
+            if (thUPD > 0) // IIR here)
+            {
+                __m256 ymm_Mem_l8_1, ymm_Mem_l8_2;
+
+                ymm_Mem_l8_1 = _mm256_loadu_ps(&pMem[x]);
+                ymm_Mem_l8_2 = _mm256_loadu_ps(&pMem[x + 8]);
+
+                __m256 ymm_MemSum_l8_1, ymm_MemSum_l8_2;
+
+                ymm_MemSum_l8_1 = _mm256_loadu_ps(&pMemSum[x]); // todo: make pMem/pMemSum 32bytes aligned to use aligned load/store
+                ymm_MemSum_l8_2 = _mm256_loadu_ps(&pMemSum[x + 8]);
+
+                // int idm_mem = INTABS(*best_data_ptr - pMem[x + sub_x]);
+                __m256 ymm_dm_mem_l8_1 = _mm256_sub_ps(ymm_best_l8_1, ymm_Mem_l8_1);
+                __m256 ymm_dm_mem_l8_2 = _mm256_sub_ps(ymm_best_l8_2, ymm_Mem_l8_2);
+
+                ymm_dm_mem_l8_1 = _mm256_andnot_ps(sign_bit_256, ymm_dm_mem_l8_1);
+                ymm_dm_mem_l8_2 = _mm256_andnot_ps(sign_bit_256, ymm_dm_mem_l8_2);
+
+                //if ((idm_mem < thUPD) && ((i_sum_minrow + pnew) > pMemSum[x + sub_x]))
+                __m256 ymm_pnew = _mm256_set1_ps(pnew);
+
+                __m256 ymm_minsum_pnew_l8_1 = _mm256_add_ps(ymm_sum_minrow_l8_1, ymm_pnew);
+                __m256 ymm_minsum_pnew_l8_2 = _mm256_add_ps(ymm_sum_minrow_l8_2, ymm_pnew);
+
+                __m256 ymm_thUPD = _mm256_set1_ps(thUPD);
+
+                __m256 ymm_mask1_l8_1 = _mm256_cmp_ps(ymm_thUPD, ymm_dm_mem_l8_1, _CMP_GT_OQ); // if (thUPD > dm_mem) = 1
+                __m256 ymm_mask1_l8_2 = _mm256_cmp_ps(ymm_thUPD, ymm_dm_mem_l8_2, _CMP_GT_OQ);
+
+                __m256 ymm_mask2_l8_1 = _mm256_cmp_ps(ymm_minsum_pnew_l8_1, ymm_MemSum_l8_1, _CMP_GT_OQ); // if (minsum_pnew > MemSum) = 1
+                __m256 ymm_mask2_l8_2 = _mm256_cmp_ps(ymm_minsum_pnew_l8_2, ymm_MemSum_l8_2, _CMP_GT_OQ);
+
+                __m256 ymm_mask12_l8_1 = _mm256_and_ps(ymm_mask1_l8_1, ymm_mask2_l8_1);
+                __m256 ymm_mask12_l8_2 = _mm256_and_ps(ymm_mask1_l8_2, ymm_mask2_l8_2);
+
+                //mem still good - output mem block
+                //best_data_ptr = &pMem[x + sub_x];
+                ymm_best_l8_1 = _mm256_blendv_ps(ymm_best_l8_1, ymm_Mem_l8_1, ymm_mask12_l8_1);
+                ymm_best_l8_2 = _mm256_blendv_ps(ymm_best_l8_2, ymm_Mem_l8_2, ymm_mask12_l8_2);
+
+                // mem no good - update mem
+                //pMem[x + sub_x] = *best_data_ptr;
+                //pMemSum[x + sub_x] = i_sum_minrow;
+                ymm_Mem_l8_1 = _mm256_blendv_ps(ymm_best_l8_1, ymm_Mem_l8_1, ymm_mask12_l8_1);
+                ymm_Mem_l8_2 = _mm256_blendv_ps(ymm_best_l8_2, ymm_Mem_l8_2, ymm_mask12_l8_2);
+
+                ymm_MemSum_l8_1 = _mm256_blendv_ps(ymm_sum_minrow_l8_1, ymm_MemSum_l8_1, ymm_mask12_l8_1);
+                ymm_MemSum_l8_2 = _mm256_blendv_ps(ymm_sum_minrow_l8_2, ymm_MemSum_l8_2, ymm_mask12_l8_2);
+
+                _mm256_storeu_ps((&pMem[x]), ymm_Mem_l8_1);
+                _mm256_storeu_ps((&pMem[x + 8]), ymm_Mem_l8_2);
+
+                _mm256_storeu_ps((&pMemSum[x]), ymm_MemSum_l8_1);
+                _mm256_storeu_ps((&pMemSum[x + 8]), ymm_MemSum_l8_2);
+            }
+
+            // process in 32bit to reuse stored unpacked src ?
+
+            __m256* src_data_ptr = (__m256*)&pTemp512[_maxr * 4];
+
+            __m256 ymm_src_l8_1 = _mm256_load_ps((float*)(src_data_ptr + 0));
+            __m256 ymm_src_l8_2 = _mm256_load_ps((float*)(src_data_ptr + 1));
+
+            __m256 ymm_subtr_l8_1 = _mm256_sub_ps(ymm_best_l8_1, ymm_src_l8_1);
+            __m256 ymm_subtr_l8_2 = _mm256_sub_ps(ymm_best_l8_2, ymm_src_l8_2);
+
+            __m256 ymm_abs_bs_l8_1 = _mm256_andnot_ps(sign_bit_256, ymm_subtr_l8_1);
+            __m256 ymm_abs_bs_l8_2 = _mm256_andnot_ps(sign_bit_256, ymm_subtr_l8_2);
+
+            __m256 ymm_thresh = _mm256_set1_ps(thresh);
+
+            __m256 ymm_mask_bs_gt_l8_1 = _mm256_cmp_ps(ymm_abs_bs_l8_1, ymm_thresh, _CMP_GT_OQ);
+            __m256 ymm_mask_bs_gt_l8_2 = _mm256_cmp_ps(ymm_abs_bs_l8_2, ymm_thresh, _CMP_GT_OQ);
+
+            __m256 ymm_out_l8_1 = _mm256_blendv_ps(ymm_best_l8_1, ymm_src_l8_1, ymm_mask_bs_gt_l8_1);
+            __m256 ymm_out_l8_2 = _mm256_blendv_ps(ymm_best_l8_2, ymm_src_l8_2, ymm_mask_bs_gt_l8_2);
+
+
+            float* pDst = &dstp[x];
+            _mm256_store_ps((pDst), ymm_out_l8_1);
+            _mm256_store_ps((pDst + 8), ymm_out_l8_2);
         }
 
         for (int i{ 0 }; i < _diameter; ++i)
