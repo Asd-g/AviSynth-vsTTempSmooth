@@ -455,10 +455,10 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD *
     const float *srcp[(MAX_TEMP_RAD * 2 + 1)]{}, *pfp[(MAX_TEMP_RAD * 2 + 1)]{};
 
     const int l{ plane >> 1 };
-    const float thresh{ (_thresh[l] << _shift) / 256.0f };
+    const float thresh{ (_thresh[l] / 256.0f) };
 
-    const float thUPD{ (_thUPD[l] << _shift) / 256.0f };
-    const float pnew{ (_pnew[l] << _shift) / 256.0f };
+    const float thUPD{ (_thUPD[l] / 256.0f) };
+    const float pnew{ (_pnew[l] / 256.0f) };
     float* pMem = 0;
     if ((plane >> 1) == 0) pMem = reinterpret_cast<float*>(pIIRMemY);
     if ((plane >> 1) == 1) pMem = reinterpret_cast<float*>(pIIRMemU);

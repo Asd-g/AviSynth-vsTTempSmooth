@@ -261,10 +261,10 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
 
     typedef typename std::conditional < sizeof(T) <= 2, int, float>::type working_t;
 
-    const working_t thresh = (sizeof(T) <= 2) ? (_thresh[l] << _shift)  : (_thresh[l] << _shift) / 256.0f;
+    const working_t thresh = (sizeof(T) <= 2) ? (_thresh[l] << _shift)  : (_thresh[l] / 256.0f);
 
-    const working_t thUPD = (sizeof(T) <= 2) ? (_thUPD[l] << _shift ) : (_thUPD[l] << _shift) / 256.0f;
-    const working_t pnew = (sizeof(T) <= 2) ? (_pnew[l] << _shift ) : (_pnew[l] << _shift) / 256.0f;
+    const working_t thUPD = (sizeof(T) <= 2) ? (_thUPD[l] << _shift ) : (_thUPD[l] / 256.0f);
+    const working_t pnew = (sizeof(T) <= 2) ? (_pnew[l] << _shift ) : (_pnew[l] / 256.0f);
 
     T* pMem = 0;
     if ((plane >> 1) == 0) pMem = reinterpret_cast<T*>(pIIRMemY);
@@ -334,7 +334,7 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
                         col_data_ptr = (T*)&srcp[dmt_col][x];
                     }
 
-                    wt_sum_minrow += (sizeof(T) <= 2) ? INTABS(*row_data_ptr - *col_data_ptr) : fabsf(*row_data_ptr - *col_data_ptr);
+                    wt_sum_row += (sizeof(T) <= 2) ? INTABS(*row_data_ptr - *col_data_ptr) : fabsf(*row_data_ptr - *col_data_ptr);
                 }
 
                 if (wt_sum_row < wt_sum_minrow)
@@ -367,7 +367,7 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
                 // IIR - check if memory sample is still good
                 working_t idm_mem = (sizeof(T) <= 2) ? INTABS(*best_data_ptr - pMem[x]) : fabsf(*best_data_ptr - pMem[x]);
 
-                if ((idm_mem < thUPD) && (wt_sum_minrow + pnew) > pMemSum[x])
+                if ((idm_mem < thUPD) && ((wt_sum_minrow + pnew) > pMemSum[x]))
                 {
                     //mem still good - output mem block
                     best_data_ptr = &pMem[x];
