@@ -41,7 +41,7 @@ class TTempSmooth : public GenericVideoFilter
     int* pMinSumMemU;
     int* pMinSumMemV;
     int _pnew[3];
-	int _threads;
+    int _threads;
 
 
     template<typename T, bool useDiff>
@@ -64,7 +64,7 @@ class TTempSmooth : public GenericVideoFilter
     template<bool useDiff>
     void filterF_avx512(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
-    float (*compare)(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
+    float(*compare)(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
 
     template<typename T>
     void filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
