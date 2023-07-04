@@ -255,7 +255,7 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
     const size_t stride{ dst->GetPitch(plane) / sizeof(T) };
     const size_t width{ dst->GetRowSize(plane) / sizeof(T) };
     const int height{ dst->GetHeight(plane) };
-    const T* srcp[(MAX_TEMP_RAD * 2 + 1)]{}, * pfp[(MAX_TEMP_RAD * 2 + 1)]{};
+    const T* g_srcp[(MAX_TEMP_RAD * 2 + 1)]{}, * g_pfp[(MAX_TEMP_RAD * 2 + 1)]{};
 
     const int l{ plane >> 1 };
 
@@ -266,15 +266,15 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
     const working_t thUPD = (sizeof(T) <= 2) ? (_thUPD[l] << _shift ) : (_thUPD[l] / 256.0f);
     const working_t pnew = (sizeof(T) <= 2) ? (_pnew[l] << _shift ) : (_pnew[l] / 256.0f);
 
-    T* pMem = 0;
-    if ((plane >> 1) == 0) pMem = reinterpret_cast<T*>(pIIRMemY);
-    if ((plane >> 1) == 1) pMem = reinterpret_cast<T*>(pIIRMemU);
-    if ((plane >> 1) == 2) pMem = reinterpret_cast<T*>(pIIRMemV);
+    T* g_pMem = 0;
+    if ((plane >> 1) == 0) g_pMem = reinterpret_cast<T*>(pIIRMemY);
+    if ((plane >> 1) == 1) g_pMem = reinterpret_cast<T*>(pIIRMemU);
+    if ((plane >> 1) == 2) g_pMem = reinterpret_cast<T*>(pIIRMemV);
 
-    working_t* pMemSum = 0;
-    if ((plane >> 1) == 0) pMemSum = (working_t*)pMinSumMemY;
-    if ((plane >> 1) == 1) pMemSum = (working_t*)pMinSumMemU;
-    if ((plane >> 1) == 2) pMemSum = (working_t*)pMinSumMemV;
+    working_t* g_pMemSum = 0;
+    if ((plane >> 1) == 0) g_pMemSum = (working_t*)pMinSumMemY;
+    if ((plane >> 1) == 1) g_pMemSum = (working_t*)pMinSumMemU;
+    if ((plane >> 1) == 2) g_pMemSum = (working_t*)pMinSumMemV;
 
     const working_t MaxSumDM = (sizeof(T) < 2) ? 255 * (_maxr * 2 + 1) : 65535 * (_maxr * 2 + 1); // 65535 is enough max for float too
 
@@ -282,20 +282,36 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
     {
         src_stride[i] = src[i]->GetPitch(plane) / sizeof(T);
         pf_stride[i] = pf[i]->GetPitch(plane) / sizeof(T);
-        srcp[i] = reinterpret_cast<const T*>(src[i]->GetReadPtr(plane));
-        pfp[i] = reinterpret_cast<const T*>(pf[i]->GetReadPtr(plane));
+        g_srcp[i] = reinterpret_cast<const T*>(src[i]->GetReadPtr(plane));
+        g_pfp[i] = reinterpret_cast<const T*>(pf[i]->GetReadPtr(plane));
     }
 
-    T* dstp{ reinterpret_cast<T*>(dst->GetWritePtr(plane)) };
+    T* g_dstp{ reinterpret_cast<T*>(dst->GetWritePtr(plane)) };
 
 #ifdef _DEBUG
     iMEL_non_current_samples = 0;
     iMEL_mem_hits = 0;
 #endif
 
+#pragma omp parallel for num_threads(_threads)
     for (int y{ 0 }; y < height; ++y)
     {
-        for (int x{ 0 }; x < width; ++x)
+		// local threads ptrs
+		const T* srcp[(MAX_TEMP_RAD * 2 + 1)]{}, *pfp[(MAX_TEMP_RAD * 2 + 1)]{};
+		T *dstp, *pMem;
+		working_t *pMemSum;
+
+		for (int i{ 0 }; i < _diameter; ++i)
+		{
+			srcp[i] = g_srcp[i] + y * src_stride[i];
+			pfp[i] = g_pfp[i] + y * pf_stride[i];
+		}
+
+		dstp = g_dstp + y * stride;
+		pMem = g_pMem + y * width;
+		pMemSum = g_pMemSum + y * width;
+		
+		for (int x{ 0 }; x < width; ++x)
         {
 
             // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
@@ -395,15 +411,6 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
 
         }
 
-        for (int i{ 0 }; i < _diameter; ++i)
-        {
-            srcp[i] += src_stride[i];
-            pfp[i] += pf_stride[i];
-        }
-
-        dstp += stride;
-        pMem += width;// mem_stride; ??
-        pMemSum += width;
     }
 
 #ifdef _DEBUG
@@ -453,9 +460,9 @@ static float ComparePlane(PVideoFrame& src, PVideoFrame& src1, const int bits_pe
 }
 
 template <bool pfclip, bool fp>
-TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew, int vpnew, IScriptEnvironment* env)
+TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew, int vpnew, int threads, IScriptEnvironment* env)
     : GenericVideoFilter(_child), _maxr(maxr), _scthresh(scthresh), _diameter(maxr * 2 + 1), _thresh{ ythresh, uthresh, vthresh }, _mdiff{ ymdiff, umdiff, vmdiff }, _shift(vi.BitsPerComponent() - 8), _threshF{ 0.0f, 0.0f, 0.0f },
-    _cw(0.0f), _pfclip(pfclip_), _opt(opt), _pmode(pmode), _thUPD{ ythupd, uthupd, vthupd }, _pnew{ ypnew, upnew, vpnew }
+	_cw(0.0f), _pfclip(pfclip_), _opt(opt), _pmode(pmode), _thUPD{ ythupd, uthupd, vthupd }, _pnew{ ypnew, upnew, vpnew }, _threads{threads}
 {
     has_at_least_v8 = env->FunctionExists("propShow");
 
@@ -969,7 +976,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
 
 AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvironment* env)
 {
-    enum { Clip, Maxr, Ythresh, Uthresh, Vthresh, Ymdiff, Umdiff, Vmdiff, Strength, Scthresh, Fp, Y, U, V, Pfclip, Opt, pmode, YthUPD, UthUPD, VthUPD, Ypnew, Upnew, Vpnew };
+    enum { Clip, Maxr, Ythresh, Uthresh, Vthresh, Ymdiff, Umdiff, Vmdiff, Strength, Scthresh, Fp, Y, U, V, Pfclip, Opt, pmode, YthUPD, UthUPD, VthUPD, Ypnew, Upnew, Vpnew, threads };
 
     PClip pfclip{ (args[Pfclip].Defined() ? args[Pfclip].AsClip() : nullptr) };
     const bool fp{ args[Fp].AsBool(true) };
@@ -1000,6 +1007,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
+				args[threads].AsInt(1),
                 env);
         else
             return new TTempSmooth<true, false>(
@@ -1025,6 +1033,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
+				args[threads].AsInt(1),
                 env);
     }
     else
@@ -1053,6 +1062,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
+				args[threads].AsInt(1),
                 env);
         else
             return new TTempSmooth<false, false>(
@@ -1078,6 +1088,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
+				args[threads].AsInt(1),
                 env);
     }
 }
@@ -1089,6 +1100,6 @@ const char* __stdcall AvisynthPluginInit3(IScriptEnvironment * env, const AVS_Li
 {
     AVS_linkage = vectors;
 
-    env->AddFunction("vsTTempSmooth", "c[maxr]i[ythresh]i[uthresh]i[vthresh]i[ymdiff]i[umdiff]i[vmdiff]i[strength]i[scthresh]f[fp]b[y]i[u]i[v]i[pfclip]c[opt]i[pmode]i[ythupd]i[uthupd]i[vthupd]i[ypnew]i[upnew]i[vpnew]i", Create_TTempSmooth, 0);
+    env->AddFunction("vsTTempSmooth", "c[maxr]i[ythresh]i[uthresh]i[vthresh]i[ymdiff]i[umdiff]i[vmdiff]i[strength]i[scthresh]f[fp]b[y]i[u]i[v]i[pfclip]c[opt]i[pmode]i[ythupd]i[uthupd]i[vthupd]i[ypnew]i[upnew]i[vpnew]i[threads]i", Create_TTempSmooth, 0);
     return "vsTTempSmooth";
 }
