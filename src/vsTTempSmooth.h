@@ -41,6 +41,7 @@ class TTempSmooth : public GenericVideoFilter
     int* pMinSumMemU;
     int* pMinSumMemV;
     int _pnew[3];
+	int _threads;
 
 
     template<typename T, bool useDiff>
@@ -85,13 +86,13 @@ class TTempSmooth : public GenericVideoFilter
 
 public:
     TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh,
-        int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew, int vpnew,
+        int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew, int vpnew, int threads,
         IScriptEnvironment* env);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
     int __stdcall SetCacheHints(int cachehints, int frame_range) override
     {
         //        return cachehints == CACHE_GET_MTMODE ? MT_MULTI_INSTANCE : 0;
-                // set to serialized to correct work of IIR mode ?
+        // set to serialized to correct work of IIR mode ?
         return cachehints == CACHE_GET_MTMODE ? ((_pmode == 1 && (_thUPD[0] > 0 || _thUPD[1] > 0 || _thUPD[2] > 0)) ? MT_SERIALIZED : MT_MULTI_INSTANCE) : 0;
     }
 };
