@@ -845,6 +845,11 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
         {
             if (_pmode == 1)
             {
+                if (i == 1)
+                {
+                    int idbr = 0;
+                }
+
                 (this->*filter_mode2)(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                 continue;
             }
