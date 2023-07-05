@@ -446,30 +446,27 @@ template void TTempSmooth<false, false>::filterI_mode2_avx2<uint16_t>(PVideoFram
 template<bool pfclip, bool fp>
 void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane)
 {
-    alignas(64) __m512 Temp512[(MAX_TEMP_RAD * 2 + 1) * 4];
-    __m512* pTemp512 = &Temp512[0];
-
     int src_stride[(MAX_TEMP_RAD * 2 + 1)]{};
     int pf_stride[(MAX_TEMP_RAD * 2 + 1)]{};
     const int stride{ dst->GetPitch(plane) / 4 };
     const int width{ dst->GetRowSize(plane) / 4 };
     const int height{ dst->GetHeight(plane) };
-    const float *srcp[(MAX_TEMP_RAD * 2 + 1)]{}, *pfp[(MAX_TEMP_RAD * 2 + 1)]{};
+    const float *g_srcp[(MAX_TEMP_RAD * 2 + 1)]{}, *g_pfp[(MAX_TEMP_RAD * 2 + 1)]{};
 
     const int l{ plane >> 1 };
     const float thresh{ (_thresh[l] / 256.0f) };
 
     const float thUPD{ (_thUPD[l] / 256.0f) };
     const float pnew{ (_pnew[l] / 256.0f) };
-    float* pMem = 0;
-    if ((plane >> 1) == 0) pMem = reinterpret_cast<float*>(pIIRMemY);
-    if ((plane >> 1) == 1) pMem = reinterpret_cast<float*>(pIIRMemU);
-    if ((plane >> 1) == 2) pMem = reinterpret_cast<float*>(pIIRMemV);
+    float* g_pMem = 0;
+    if ((plane >> 1) == 0) g_pMem = reinterpret_cast<float*>(pIIRMemY);
+    if ((plane >> 1) == 1) g_pMem = reinterpret_cast<float*>(pIIRMemU);
+    if ((plane >> 1) == 2) g_pMem = reinterpret_cast<float*>(pIIRMemV);
 
-    float* pMemSum = 0;
-    if ((plane >> 1) == 0) pMemSum = (float*)pMinSumMemY;
-    if ((plane >> 1) == 1) pMemSum = (float*)pMinSumMemU;
-    if ((plane >> 1) == 2) pMemSum = (float*)pMinSumMemV;
+    float* g_pMemSum = 0;
+    if ((plane >> 1) == 0) g_pMemSum = (float*)pMinSumMemY;
+    if ((plane >> 1) == 1) g_pMemSum = (float*)pMinSumMemU;
+    if ((plane >> 1) == 2) g_pMemSum = (float*)pMinSumMemV;
 
     const float fMaxSumDM = 2.0f;
 
@@ -477,11 +474,11 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
     {
         src_stride[i] = src[i]->GetPitch(plane) / 4;
         pf_stride[i] = pf[i]->GetPitch(plane) / 4;
-        srcp[i] = reinterpret_cast<const float*>(src[i]->GetReadPtr(plane));
-        pfp[i] = reinterpret_cast<const float*>(pf[i]->GetReadPtr(plane));
+        g_srcp[i] = reinterpret_cast<const float*>(src[i]->GetReadPtr(plane));
+        g_pfp[i] = reinterpret_cast<const float*>(pf[i]->GetReadPtr(plane));
     }
 
-    float* dstp{ reinterpret_cast<float*>(dst->GetWritePtr(plane)) };
+    float* g_dstp{ reinterpret_cast<float*>(dst->GetWritePtr(plane)) };
 
     const __m512 zmm_zero = _mm512_setzero_ps();
     const __m512 sign_bit = _mm512_set1_ps(-0.0f);
@@ -497,10 +494,32 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
     const __m512i zmm_idx_add_h16_1 = _mm512_set_epi32(47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32);
     const __m512i zmm_idx_add_h16_2 = _mm512_set_epi32(63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48);
 
-
+#pragma omp parallel for num_threads(_threads)
     for (int y{ 0 }; y < height; ++y)
     {
+        // local thread temps
+        alignas(64) __m512 Temp512[(MAX_TEMP_RAD * 2 + 1) * 4];
+        __m512* pTemp512 = &Temp512[0];
+
+        alignas(32) __m256 Temp256[(MAX_TEMP_RAD * 2 + 1) * 2];
+        __m256* pTemp256 = &Temp256[0];
+
         const int col64 = width - (width % SIMD_AVX512_SPP);
+
+        // local threads ptrs
+        const float* srcp[(MAX_TEMP_RAD * 2 + 1)]{}, *pfp[(MAX_TEMP_RAD * 2 + 1)]{};
+        float *dstp, *pMem;
+        float *pMemSum;
+
+        for (int i{ 0 }; i < _diameter; ++i)
+        {
+            srcp[i] = g_srcp[i] + y * src_stride[i];
+            pfp[i] = g_pfp[i] + y * pf_stride[i];
+        }
+
+        dstp = g_dstp + y * stride;
+        pMem = g_pMem + y * width;
+        pMemSum = g_pMemSum + y * width;
 
         for (int x{ 0 }; x < col64; x += SIMD_AVX512_SPP)
         {
@@ -693,27 +712,27 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
                 // mem no good - update mem
                 //pMem[x + sub_x] = *best_data_ptr;
                 //pMemSum[x + sub_x] = i_sum_minrow;
-                /*ymm_Mem_l8_1 = _mm256_blendv_ps(ymm_best_l8_1, ymm_Mem_l8_1, ymm_mask12_l8_1);
-                ymm_Mem_l8_2 = _mm256_blendv_ps(ymm_best_l8_2, ymm_Mem_l8_2, ymm_mask12_l8_2);
-                ymm_Mem_h8_1 = _mm256_blendv_ps(ymm_best_h8_1, ymm_Mem_h8_1, ymm_mask12_h8_1);
-                ymm_Mem_h8_2 = _mm256_blendv_ps(ymm_best_h8_2, ymm_Mem_h8_2, ymm_mask12_h8_2);
+                zmm_Mem_l16_1 = _mm512_mask_blend_ps(kmm_mask2_l16_1, zmm_best_l16_1, zmm_Mem_l16_1);
+                zmm_Mem_l16_2 = _mm512_mask_blend_ps(kmm_mask2_l16_2, zmm_best_l16_2, zmm_Mem_l16_2);
+                zmm_Mem_h16_1 = _mm512_mask_blend_ps(kmm_mask2_h16_1, zmm_best_h16_1, zmm_Mem_h16_1);
+                zmm_Mem_h16_2 = _mm512_mask_blend_ps(kmm_mask2_h16_2, zmm_best_h16_2, zmm_Mem_h16_2);
 
-                ymm_MemSum_l8_1 = _mm256_blendv_ps(ymm_sum_minrow_l8_1, ymm_MemSum_l8_1, ymm_mask12_l8_1);
-                ymm_MemSum_l8_2 = _mm256_blendv_ps(ymm_sum_minrow_l8_2, ymm_MemSum_l8_2, ymm_mask12_l8_2);
-                ymm_MemSum_h8_1 = _mm256_blendv_ps(ymm_sum_minrow_h8_1, ymm_MemSum_h8_1, ymm_mask12_h8_1);
-                ymm_MemSum_h8_2 = _mm256_blendv_ps(ymm_sum_minrow_h8_2, ymm_MemSum_h8_2, ymm_mask12_h8_2);
+                zmm_MemSum_l16_1 = _mm512_mask_blend_ps(kmm_mask2_l16_1, zmm_sum_minrow_l16_1, zmm_MemSum_l16_1);
+                zmm_MemSum_l16_2 = _mm512_mask_blend_ps(kmm_mask2_l16_2, zmm_sum_minrow_l16_2, zmm_MemSum_l16_2);
+                zmm_MemSum_h16_1 = _mm512_mask_blend_ps(kmm_mask2_h16_1, zmm_sum_minrow_h16_1, zmm_MemSum_h16_1);
+                zmm_MemSum_h16_2 = _mm512_mask_blend_ps(kmm_mask2_h16_2, zmm_sum_minrow_h16_2, zmm_MemSum_h16_2);
 
-                _mm256_storeu_ps((&pMem[x]), ymm_Mem_l8_1);
-                _mm256_storeu_ps((&pMem[x + 8]), ymm_Mem_l8_2);
-                _mm256_storeu_ps((&pMem[x + 16]), ymm_Mem_h8_1);
-                _mm256_storeu_ps((&pMem[x + 24]), ymm_Mem_h8_2);
+                _mm512_storeu_ps((&pMem[x]), zmm_Mem_l16_1);
+                _mm512_storeu_ps((&pMem[x + 16]), zmm_Mem_l16_2);
+                _mm512_storeu_ps((&pMem[x + 32]), zmm_Mem_h16_1);
+                _mm512_storeu_ps((&pMem[x + 48]), zmm_Mem_h16_2);
 
-                _mm256_storeu_ps((&pMemSum[x]), ymm_MemSum_l8_1);
-                _mm256_storeu_ps((&pMemSum[x + 8]), ymm_MemSum_l8_2);
-                _mm256_storeu_ps((&pMemSum[x + 16]), ymm_MemSum_h8_1);
-                _mm256_storeu_ps((&pMemSum[x + 24]), ymm_MemSum_h8_2);*/
+                _mm512_storeu_ps((&pMemSum[x]), zmm_MemSum_l16_1);
+                _mm512_storeu_ps((&pMemSum[x + 16]), zmm_MemSum_l16_2);
+                _mm512_storeu_ps((&pMemSum[x + 32]), zmm_MemSum_h16_1);
+                _mm512_storeu_ps((&pMemSum[x + 48]), zmm_MemSum_h16_2);
 
-                _mm512_mask_storeu_ps((&pMem[x]), kmm_mask2_l16_1, zmm_best_l16_1);
+/*                _mm512_mask_storeu_ps((&pMem[x]), kmm_mask2_l16_1, zmm_best_l16_1); - mask need invert, todo: make inverted mask in 2 compare to use masked storage
                 _mm512_mask_storeu_ps((&pMem[x + 16]), kmm_mask2_l16_2, zmm_best_l16_2);
                 _mm512_mask_storeu_ps((&pMem[x + 32]), kmm_mask2_h16_1, zmm_best_h16_1);
                 _mm512_mask_storeu_ps((&pMem[x + 48]), kmm_mask2_h16_2, zmm_best_h16_2);
@@ -721,7 +740,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
                 _mm512_mask_storeu_ps((&pMemSum[x]), kmm_mask2_l16_1, zmm_sum_minrow_l16_1);
                 _mm512_mask_storeu_ps((&pMemSum[x + 16]), kmm_mask2_l16_2, zmm_sum_minrow_l16_2);
                 _mm512_mask_storeu_ps((&pMemSum[x + 32]), kmm_mask2_h16_1, zmm_sum_minrow_h16_1);
-                _mm512_mask_storeu_ps((&pMemSum[x + 48]), kmm_mask2_h16_2, zmm_sum_minrow_h16_2);
+                _mm512_mask_storeu_ps((&pMemSum[x + 48]), kmm_mask2_h16_2, zmm_sum_minrow_h16_2);*/
 
             }
             
@@ -760,7 +779,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
             _mm512_store_ps((pDst), zmm_out_l16_1);
             _mm512_store_ps((pDst + 16), zmm_out_l16_2);
             _mm512_store_ps((pDst + 32), zmm_out_h16_1);
-            _mm512_store_ps((pDst + 48), zmm_out_h16_2); // frame width 720 - buffer overrun ?? VirtualDub crash
+            _mm512_store_ps((pDst + 48), zmm_out_h16_2);
          
         }
 
@@ -785,8 +804,8 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
                 ymm_l8_1 = _mm256_load_ps(data_ptr);
                 ymm_l8_2 = _mm256_load_ps((data_ptr + 8));
 
-                _mm256_store_ps((float*)(pTemp512 + (int64_t)i * 4 + 0), ymm_l8_1);
-                _mm256_store_ps((float*)(pTemp512 + (int64_t)i * 4 + 1), ymm_l8_2);
+                _mm256_store_ps((float*)(pTemp256 + (int64_t)i * 2 + 0), ymm_l8_1);
+                _mm256_store_ps((float*)(pTemp256 + (int64_t)i * 2 + 1), ymm_l8_2);
             }
 
             // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
@@ -811,8 +830,8 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
                     { // samples with itselves => DM=0
                         continue;
                     }
-                    __m256* row_data_ptr = (__m256*)&pTemp512[dmt_row * 4];
-                    __m256* col_data_ptr = (__m256*)&pTemp512[dmt_col * 4];
+                    __m256* row_data_ptr = &pTemp256[dmt_row * 2];
+                    __m256* col_data_ptr = &pTemp256[dmt_col * 2];
 
                     ymm_row_l8_1 = _mm256_load_ps((float*)(row_data_ptr + 0));
                     ymm_row_l8_2 = _mm256_load_ps((float*)(row_data_ptr + 1));
@@ -849,8 +868,8 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
             ymm_idx_minrow_l8_1 = _mm256_add_epi32(ymm_idx_minrow_l8_1, ymm_idx_add_l8_1);
             ymm_idx_minrow_l8_2 = _mm256_add_epi32(ymm_idx_minrow_l8_2, ymm_idx_add_l8_2);
 
-            __m256 ymm_best_l8_1 = _mm256_i32gather_ps((float*)pTemp512, ymm_idx_minrow_l8_1, 4);
-            __m256 ymm_best_l8_2 = _mm256_i32gather_ps((float*)pTemp512, ymm_idx_minrow_l8_2, 4);
+            __m256 ymm_best_l8_1 = _mm256_i32gather_ps((float*)pTemp256, ymm_idx_minrow_l8_1, 4);
+            __m256 ymm_best_l8_2 = _mm256_i32gather_ps((float*)pTemp256, ymm_idx_minrow_l8_2, 4);
 
             // load and unpack pMem and pMemSum
 
@@ -913,7 +932,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
 
             // process in 32bit to reuse stored unpacked src ?
 
-            __m256* src_data_ptr = (__m256*)&pTemp512[_maxr * 4];
+            __m256* src_data_ptr = &pTemp256[_maxr * 2];
 
             __m256 ymm_src_l8_1 = _mm256_load_ps((float*)(src_data_ptr + 0));
             __m256 ymm_src_l8_2 = _mm256_load_ps((float*)(src_data_ptr + 1));
@@ -937,16 +956,6 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
             _mm256_store_ps((pDst), ymm_out_l8_1);
             _mm256_store_ps((pDst + 8), ymm_out_l8_2);
         }
-
-        for (int i{ 0 }; i < _diameter; ++i)
-        {
-            srcp[i] += src_stride[i];
-            pfp[i] += pf_stride[i];
-        }
-
-        dstp += stride;
-        pMem += width;// mem_stride; ??
-        pMemSum += width;
     }
 
 }
