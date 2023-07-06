@@ -484,7 +484,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
     const __m512 sign_bit = _mm512_set1_ps(-0.0f);
     const __m256 sign_bit_256 = _mm256_set1_ps(-0.0f);
 
-    const __m256i ymm_idx_mul = _mm256_set1_epi32(SIMD_AVX2_SPP);
+    const __m256i ymm_idx_mul = _mm256_set1_epi32(SIMD_AVX2_SPP / 2); // 16 samples process here
     const __m256i ymm_idx_add_l8_1 = _mm256_set_epi32(7, 6, 5, 4, 3, 2, 1, 0);
     const __m256i ymm_idx_add_l8_2 = _mm256_set_epi32(15, 14, 13, 12, 11, 10, 9, 8);
 
