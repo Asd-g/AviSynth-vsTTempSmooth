@@ -261,10 +261,10 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
 
     typedef typename std::conditional < sizeof(T) <= 2, int, float>::type working_t;
 
-    const working_t thresh = (sizeof(T) <= 2) ? (_thresh[l] << _shift)  : (_thresh[l] / 256.0f);
+    const working_t thresh = (sizeof(T) <= 2) ? (_thresh[l] << _shift) : (_thresh[l] / 256.0f);
 
-    const working_t thUPD = (sizeof(T) <= 2) ? (_thUPD[l] << _shift ) : (_thUPD[l] / 256.0f);
-    const working_t pnew = (sizeof(T) <= 2) ? (_pnew[l] << _shift ) : (_pnew[l] / 256.0f);
+    const working_t thUPD = (sizeof(T) <= 2) ? (_thUPD[l] << _shift) : (_thUPD[l] / 256.0f);
+    const working_t pnew = (sizeof(T) <= 2) ? (_pnew[l] << _shift) : (_pnew[l] / 256.0f);
 
     T* g_pMem = 0;
     if ((plane >> 1) == 0) g_pMem = reinterpret_cast<T*>(pIIRMemY);
@@ -296,22 +296,22 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
 #pragma omp parallel for num_threads(_threads)
     for (int y{ 0 }; y < height; ++y)
     {
-		// local threads ptrs
-		const T* srcp[(MAX_TEMP_RAD * 2 + 1)]{}, *pfp[(MAX_TEMP_RAD * 2 + 1)]{};
-		T *dstp, *pMem;
-		working_t *pMemSum;
+        // local threads ptrs
+        const T* srcp[(MAX_TEMP_RAD * 2 + 1)]{}, * pfp[(MAX_TEMP_RAD * 2 + 1)]{};
+        T* dstp, * pMem;
+        working_t* pMemSum;
 
-		for (int i{ 0 }; i < _diameter; ++i)
-		{
-			srcp[i] = g_srcp[i] + y * src_stride[i];
-			pfp[i] = g_pfp[i] + y * pf_stride[i];
-		}
+        for (int i{ 0 }; i < _diameter; ++i)
+        {
+            srcp[i] = g_srcp[i] + y * src_stride[i];
+            pfp[i] = g_pfp[i] + y * pf_stride[i];
+        }
 
-		dstp = g_dstp + y * stride;
-		pMem = g_pMem + y * width;
-		pMemSum = g_pMemSum + y * width;
-		
-		for (int x{ 0 }; x < width; ++x)
+        dstp = g_dstp + y * stride;
+        pMem = g_pMem + y * width;
+        pMemSum = g_pMemSum + y * width;
+
+        for (int x{ 0 }; x < width; ++x)
         {
 
             // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
@@ -462,7 +462,7 @@ static float ComparePlane(PVideoFrame& src, PVideoFrame& src1, const int bits_pe
 template <bool pfclip, bool fp>
 TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew, int vpnew, int threads, IScriptEnvironment* env)
     : GenericVideoFilter(_child), _maxr(maxr), _scthresh(scthresh), _diameter(maxr * 2 + 1), _thresh{ ythresh, uthresh, vthresh }, _mdiff{ ymdiff, umdiff, vmdiff }, _shift(vi.BitsPerComponent() - 8), _threshF{ 0.0f, 0.0f, 0.0f },
-	_cw(0.0f), _pfclip(pfclip_), _opt(opt), _pmode(pmode), _thUPD{ ythupd, uthupd, vthupd }, _pnew{ ypnew, upnew, vpnew }, _threads{threads}
+    _cw(0.0f), _pfclip(pfclip_), _opt(opt), _pmode(pmode), _thUPD{ ythupd, uthupd, vthupd }, _pnew{ ypnew, upnew, vpnew }, _threads{ threads }
 {
     has_at_least_v8 = env->FunctionExists("propShow");
 
@@ -708,9 +708,12 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
                     filter_mode2 = &TTempSmooth::filterI_mode2_avx2<uint16_t>;
                 break;
             }
-            default: compare = ComparePlane_avx2<float>;
+            default:
+            {
+                compare = ComparePlane_avx2<float>;
                 if (_pmode == 1)
                     filter_mode2 = &TTempSmooth::filterF_mode2_avx2;
+            }
         }
     }
     else if (_opt == 1)
@@ -744,7 +747,7 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
             {
                 compare = ComparePlane<float>;
                 if (_pmode == 1)
-                    filter_mode2 = &TTempSmooth::filterI_mode2_C<float>;
+                    filter_mode2 = &TTempSmooth::filter_mode2_C<float>;
             }
         }
     }
@@ -1010,7 +1013,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
-				args[threads].AsInt(1),
+                args[threads].AsInt(1),
                 env);
         else
             return new TTempSmooth<true, false>(
@@ -1036,7 +1039,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
-				args[threads].AsInt(1),
+                args[threads].AsInt(1),
                 env);
     }
     else
@@ -1065,7 +1068,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
-				args[threads].AsInt(1),
+                args[threads].AsInt(1),
                 env);
         else
             return new TTempSmooth<false, false>(
@@ -1091,7 +1094,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
-				args[threads].AsInt(1),
+                args[threads].AsInt(1),
                 env);
     }
 }

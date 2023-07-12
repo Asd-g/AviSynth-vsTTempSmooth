@@ -41,7 +41,7 @@ class TTempSmooth : public GenericVideoFilter
     int* pMinSumMemU;
     int* pMinSumMemV;
     int _pnew[3];
-	int _threads;
+    int _threads;
 
 
     template<typename T, bool useDiff>

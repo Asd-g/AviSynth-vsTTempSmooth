@@ -451,7 +451,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
     const int stride{ dst->GetPitch(plane) / 4 };
     const int width{ dst->GetRowSize(plane) / 4 };
     const int height{ dst->GetHeight(plane) };
-    const float *g_srcp[(MAX_TEMP_RAD * 2 + 1)]{}, *g_pfp[(MAX_TEMP_RAD * 2 + 1)]{};
+    const float* g_srcp[(MAX_TEMP_RAD * 2 + 1)]{}, * g_pfp[(MAX_TEMP_RAD * 2 + 1)]{};
 
     const int l{ plane >> 1 };
     const float thresh{ (_thresh[l] / 256.0f) };
@@ -507,9 +507,9 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
         const int col64 = width - (width % SIMD_AVX512_SPP);
 
         // local threads ptrs
-        const float* srcp[(MAX_TEMP_RAD * 2 + 1)]{}, *pfp[(MAX_TEMP_RAD * 2 + 1)]{};
-        float *dstp, *pMem;
-        float *pMemSum;
+        const float* srcp[(MAX_TEMP_RAD * 2 + 1)]{}, * pfp[(MAX_TEMP_RAD * 2 + 1)]{};
+        float* dstp, * pMem;
+        float* pMemSum;
 
         for (int i{ 0 }; i < _diameter; ++i)
         {
@@ -549,7 +549,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
                 _mm512_store_ps((float*)(pTemp512 + (int64_t)i * 4 + 3), zmm_h16_2);
 
             }
-            
+
             // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
             __m512 zmm_row_l16_1, zmm_row_l16_2, zmm_row_h16_1, zmm_row_h16_2;
             __m512 zmm_col_l16_1, zmm_col_l16_2, zmm_col_h16_1, zmm_col_h16_2;
@@ -643,7 +643,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
             __m512 zmm_best_h16_2 = _mm512_i32gather_ps(zmm_idx_minrow_h16_2, (float*)pTemp512, 4);
 
             // load and unpack pMem and pMemSum
-            
+
             if (thUPD > 0) // IIR here)
             {
                 __m512 zmm_Mem_l16_1, zmm_Mem_l16_2, zmm_Mem_h16_1, zmm_Mem_h16_2;
@@ -686,21 +686,22 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
                 __mmask16 kmm_mask1_h16_1 = _mm512_cmp_ps_mask(zmm_thUPD, zmm_dm_mem_h16_1, _CMP_GT_OQ);
                 __mmask16 kmm_mask1_h16_2 = _mm512_cmp_ps_mask(zmm_thUPD, zmm_dm_mem_h16_2, _CMP_GT_OQ);
 
-/*                __mmask16 ymm_mask2_l16_1 = _mm512_cmp_ps_mask(zmm_minsum_pnew_l16_1, zmm_MemSum_l16_1, _CMP_GT_OQ); // if (minsum_pnew > MemSum) = 1
+                /* __mmask16 ymm_mask2_l16_1 = _mm512_cmp_ps_mask(zmm_minsum_pnew_l16_1, zmm_MemSum_l16_1, _CMP_GT_OQ); // if (minsum_pnew > MemSum) = 1
                 __mmask16 ymm_mask2_l16_2 = _mm512_cmp_ps_mask(zmm_minsum_pnew_l16_2, zmm_MemSum_l16_2, _CMP_GT_OQ);
                 __mmask16 ymm_mask2_h16_1 = _mm512_cmp_ps_mask(zmm_minsum_pnew_h16_1, zmm_MemSum_h16_1, _CMP_GT_OQ);
-                __mmask16 ymm_mask2_h16_2 = _mm512_cmp_ps_mask(zmm_minsum_pnew_h16_2, zmm_MemSum_h16_2, _CMP_GT_OQ);*/
+                __mmask16 ymm_mask2_h16_2 = _mm512_cmp_ps_mask(zmm_minsum_pnew_h16_2, zmm_MemSum_h16_2, _CMP_GT_OQ);
+                */
 
                 __mmask16 kmm_mask2_l16_1 = _mm512_mask_cmp_ps_mask(kmm_mask1_l16_1, zmm_minsum_pnew_l16_1, zmm_MemSum_l16_1, _CMP_GT_OQ); // if (minsum_pnew > MemSum) = 1
                 __mmask16 kmm_mask2_l16_2 = _mm512_mask_cmp_ps_mask(kmm_mask1_l16_2, zmm_minsum_pnew_l16_2, zmm_MemSum_l16_2, _CMP_GT_OQ);
                 __mmask16 kmm_mask2_h16_1 = _mm512_mask_cmp_ps_mask(kmm_mask1_h16_1, zmm_minsum_pnew_h16_1, zmm_MemSum_h16_1, _CMP_GT_OQ);
                 __mmask16 kmm_mask2_h16_2 = _mm512_mask_cmp_ps_mask(kmm_mask1_h16_2, zmm_minsum_pnew_h16_2, zmm_MemSum_h16_2, _CMP_GT_OQ);
 
-
-/*                __m256 ymm_mask12_l8_1 = _mm256_and_ps(ymm_mask1_l8_1, ymm_mask2_l8_1);
+                /* __m256 ymm_mask12_l8_1 = _mm256_and_ps(ymm_mask1_l8_1, ymm_mask2_l8_1);
                 __m256 ymm_mask12_l8_2 = _mm256_and_ps(ymm_mask1_l8_2, ymm_mask2_l8_2);
                 __m256 ymm_mask12_h8_1 = _mm256_and_ps(ymm_mask1_h8_1, ymm_mask2_h8_1);
-                __m256 ymm_mask12_h8_2 = _mm256_and_ps(ymm_mask1_h8_2, ymm_mask2_h8_2);*/
+                __m256 ymm_mask12_h8_2 = _mm256_and_ps(ymm_mask1_h8_2, ymm_mask2_h8_2);
+                */
 
                 //mem still good - output mem block
                 //best_data_ptr = &pMem[x + sub_x];
@@ -732,7 +733,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
                 _mm512_storeu_ps((&pMemSum[x + 32]), zmm_MemSum_h16_1);
                 _mm512_storeu_ps((&pMemSum[x + 48]), zmm_MemSum_h16_2);
 
-/*                _mm512_mask_storeu_ps((&pMem[x]), kmm_mask2_l16_1, zmm_best_l16_1); - mask need invert, todo: make inverted mask in 2 compare to use masked storage
+                /* _mm512_mask_storeu_ps((&pMem[x]), kmm_mask2_l16_1, zmm_best_l16_1); - mask need invert, todo: make inverted mask in 2 compare to use masked storage
                 _mm512_mask_storeu_ps((&pMem[x + 16]), kmm_mask2_l16_2, zmm_best_l16_2);
                 _mm512_mask_storeu_ps((&pMem[x + 32]), kmm_mask2_h16_1, zmm_best_h16_1);
                 _mm512_mask_storeu_ps((&pMem[x + 48]), kmm_mask2_h16_2, zmm_best_h16_2);
@@ -740,10 +741,10 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
                 _mm512_mask_storeu_ps((&pMemSum[x]), kmm_mask2_l16_1, zmm_sum_minrow_l16_1);
                 _mm512_mask_storeu_ps((&pMemSum[x + 16]), kmm_mask2_l16_2, zmm_sum_minrow_l16_2);
                 _mm512_mask_storeu_ps((&pMemSum[x + 32]), kmm_mask2_h16_1, zmm_sum_minrow_h16_1);
-                _mm512_mask_storeu_ps((&pMemSum[x + 48]), kmm_mask2_h16_2, zmm_sum_minrow_h16_2);*/
-
+                _mm512_mask_storeu_ps((&pMemSum[x + 48]), kmm_mask2_h16_2, zmm_sum_minrow_h16_2);
+                */
             }
-            
+
             // process in 32bit to reuse stored unpacked src ?
 
             __m512* src_data_ptr = &pTemp512[_maxr * 4];
@@ -780,7 +781,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
             _mm512_store_ps((pDst + 16), zmm_out_l16_2);
             _mm512_store_ps((pDst + 32), zmm_out_h16_1);
             _mm512_store_ps((pDst + 48), zmm_out_h16_2);
-         
+
         }
 
         // process last columns with 16 AVX2 - may be make it inline function to reuse from _AVX2.cpp ?

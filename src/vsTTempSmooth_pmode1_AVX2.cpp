@@ -463,7 +463,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD *
     const int stride{ dst->GetPitch(plane) / 4 };
     const int width{ dst->GetRowSize(plane) / 4 };
     const int height{ dst->GetHeight(plane) };
-    const float *g_srcp[(MAX_TEMP_RAD * 2 + 1)]{}, *g_pfp[(MAX_TEMP_RAD * 2 + 1)]{};
+    const float* g_srcp[(MAX_TEMP_RAD * 2 + 1)]{}, * g_pfp[(MAX_TEMP_RAD * 2 + 1)]{};
 
     const int l{ plane >> 1 };
     const float thresh{ (_thresh[l] / 256.0f) };
@@ -554,7 +554,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD *
                 _mm256_store_ps((float*)(pTemp256 + (int64_t)i * 4 + 3), ymm_h8_2);
 
             }
-            
+
             // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
             __m256 ymm_row_l8_1, ymm_row_l8_2, ymm_row_h8_1, ymm_row_h8_2;
             __m256 ymm_col_l8_1, ymm_col_l8_2, ymm_col_h8_1, ymm_col_h8_2;
@@ -732,7 +732,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD *
                 _mm256_storeu_ps((&pMemSum[x + 24]), ymm_MemSum_h8_2);
 
             }
-            
+
             // process in 32bit to reuse stored unpacked src ?
 
             __m256* src_data_ptr = &pTemp256[_maxr * 4];
