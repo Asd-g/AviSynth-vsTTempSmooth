@@ -8,6 +8,7 @@ set(sources ${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_AVX512.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/VCL2/instrset_detect.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_pmode1_AVX2.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_pmode1_AVX512.cpp
 )
 
 if (WIN32)
@@ -45,11 +46,13 @@ if (MSVC)
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_AVX2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_pmode1_AVX2.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_AVX512.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_pmode1_AVX512.cpp PROPERTIES COMPILE_OPTIONS "/arch:AVX512")
 else()
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_SSE2.cpp PROPERTIES COMPILE_OPTIONS "-mfpmath=sse;-msse2")
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_AVX2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_pmode1_AVX2.cpp PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
     set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_AVX512.cpp PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512dq;-mavx512vl;-mfma")
+    set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/src/vsTTempSmooth_pmode1_AVX512.cpp PROPERTIES COMPILE_OPTIONS "-mavx512f;-mavx512bw;-mavx512dq;-mavx512vl;-mfma")
 endif()
 
 target_link_libraries(vsTTempSmooth PRIVATE avisynth)
@@ -58,6 +61,11 @@ if (MINGW)
     set_target_properties(vsTTempSmooth PROPERTIES PREFIX "")
 
     target_link_libraries(vsTTempSmooth PRIVATE -static-libstdc++ -static -lwinpthread -s)
+endif()
+
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(vsTTempSmooth PRIVATE OpenMP::OpenMP_CXX)
 endif()
 
 if (UNIX)
