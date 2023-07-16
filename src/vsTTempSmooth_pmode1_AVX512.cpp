@@ -480,7 +480,6 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
 
     float* g_dstp{ reinterpret_cast<float*>(dst->GetWritePtr(plane)) };
 
-    const __m512 zmm_zero = _mm512_setzero_ps();
     const __m512 sign_bit = _mm512_set1_ps(-0.0f);
     const __m256 sign_bit_256 = _mm256_set1_ps(-0.0f);
 

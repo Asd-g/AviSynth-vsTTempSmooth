@@ -1,4 +1,4 @@
-#include <cmath>
+#include <cstdlib>
 #include <string>
 #include <thread>
 
@@ -354,7 +354,7 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
                         col_data_ptr = (T*)&srcp[dmt_col][x];
                     }
 
-                    wt_sum_row += (sizeof(T) <= 2) ? INTABS(*row_data_ptr - *col_data_ptr) : fabsf(*row_data_ptr - *col_data_ptr);
+                    wt_sum_row += (sizeof(T) <= 2) ? INTABS(*row_data_ptr - *col_data_ptr) : std::abs(*row_data_ptr - *col_data_ptr);
                 }
 
                 if (wt_sum_row < wt_sum_minrow)
@@ -385,7 +385,7 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
             if (thUPD > 0) // IIR here
             {
                 // IIR - check if memory sample is still good
-                working_t idm_mem = (sizeof(T) <= 2) ? INTABS(*best_data_ptr - pMem[x]) : fabsf(*best_data_ptr - pMem[x]);
+                working_t idm_mem = (sizeof(T) <= 2) ? INTABS(*best_data_ptr - pMem[x]) : std::abs(*best_data_ptr - pMem[x]);
 
                 if ((idm_mem < thUPD) && ((wt_sum_minrow + pnew) > pMemSum[x]))
                 {
@@ -404,7 +404,7 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
             }
 
             // check if best is below thresh-difference from current src
-            if (((sizeof(T) <= 2) ? INTABS(*best_data_ptr - pfp[_maxr][x]) : fabsf(*best_data_ptr - pfp[_maxr][x])) < thresh)
+            if (((sizeof(T) <= 2) ? INTABS(*best_data_ptr - pfp[_maxr][x]) : std::abs(*best_data_ptr - pfp[_maxr][x])) < thresh)
             {
                 dstp[x] = *best_data_ptr;
             }

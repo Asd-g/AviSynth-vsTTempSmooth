@@ -492,7 +492,6 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD *
 
     float* g_dstp{ reinterpret_cast<float*>(dst->GetWritePtr(plane)) };
 
-    const __m256 ymm_zero = _mm256_setzero_ps();
     const __m256 sign_bit = _mm256_set1_ps(-0.0f);
 
     const __m256i ymm_idx_mul = _mm256_set1_epi32(SIMD_AVX2_SPP);
