@@ -113,7 +113,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD *
     const __m256i ymm_idx_add_h8_2 = _mm256_set_epi32(31, 30, 29, 28, 27, 26, 25, 24);
 
 #pragma omp parallel for num_threads(_threads)
-    for (int y{ 0 }; y < height; ++y)
+    for (int y = 0; y < height; ++y)
     {
         // local threads temp
         alignas(32) __m256i Temp256[(MAX_TEMP_RAD * 2 + 1) * 4];
@@ -503,7 +503,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD *
     const __m256i ymm_idx_add_h8_2 = _mm256_set_epi32(31, 30, 29, 28, 27, 26, 25, 24);
 
 #pragma omp parallel for num_threads(_threads)
-    for (int y{ 0 }; y < height; ++y)
+    for (int y = 0; y < height; ++y)
     {
         // local threads temp
         alignas(32) __m256 Temp256[(MAX_TEMP_RAD * 2 + 1) * 4];

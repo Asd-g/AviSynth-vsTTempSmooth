@@ -1,3 +1,4 @@
+#include <cmath>
 #include <string>
 #include <thread>
 
@@ -297,7 +298,7 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
 #endif
 
 #pragma omp parallel for num_threads(_threads)
-    for (int y{ 0 }; y < height; ++y)
+    for (int y = 0; y < height; ++y)
     {
         // local threads ptrs
         const T* srcp[(MAX_TEMP_RAD * 2 + 1)]{}, * pfp[(MAX_TEMP_RAD * 2 + 1)]{};

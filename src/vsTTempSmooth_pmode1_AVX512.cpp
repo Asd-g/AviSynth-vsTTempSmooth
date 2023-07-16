@@ -495,7 +495,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
     const __m512i zmm_idx_add_h16_2 = _mm512_set_epi32(63, 62, 61, 60, 59, 58, 57, 56, 55, 54, 53, 52, 51, 50, 49, 48);
 
 #pragma omp parallel for num_threads(_threads)
-    for (int y{ 0 }; y < height; ++y)
+    for (int y = 0; y < height; ++y)
     {
         // local thread temps
         alignas(64) __m512 Temp512[(MAX_TEMP_RAD * 2 + 1) * 4];
