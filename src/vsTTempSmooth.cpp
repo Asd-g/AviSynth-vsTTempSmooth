@@ -1,3 +1,6 @@
+#include <string>
+#include <thread>
+
 #include "VCL2/instrset.h"
 #include "vsTTempSmooth.h"
 
@@ -503,6 +506,13 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
     if (vpnew < 0)
         env->ThrowError("vsTTempSmooth: vpnew must be greater than 0.");
 
+    const uint32_t thr{ std::thread::hardware_concurrency() };
+
+    if (_threads == 0)
+        _threads = thr;
+    else if (_threads < 0 || _threads > thr)
+        env->ThrowError("vsTTempSmooth: threads must be between 0..%s.", std::to_string(thr).c_str());
+
     const int iset{ instrset_detect() };
 
     if (_opt == 1 && iset < 2)
@@ -982,7 +992,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
 
 AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvironment* env)
 {
-    enum { Clip, Maxr, Ythresh, Uthresh, Vthresh, Ymdiff, Umdiff, Vmdiff, Strength, Scthresh, Fp, Y, U, V, Pfclip, Opt, pmode, YthUPD, UthUPD, VthUPD, Ypnew, Upnew, Vpnew, threads };
+    enum { Clip, Maxr, Ythresh, Uthresh, Vthresh, Ymdiff, Umdiff, Vmdiff, Strength, Scthresh, Fp, Y, U, V, Pfclip, Opt, Pmode, YthUPD, UthUPD, VthUPD, Ypnew, Upnew, Vpnew, Threads };
 
     PClip pfclip{ (args[Pfclip].Defined() ? args[Pfclip].AsClip() : nullptr) };
     const bool fp{ args[Fp].AsBool(true) };
@@ -1006,14 +1016,14 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[V].AsInt(3),
                 pfclip,
                 args[Opt].AsInt(-1),
-                args[pmode].AsInt(0),
+                args[Pmode].AsInt(0),
                 args[YthUPD].AsInt(0),
                 args[UthUPD].AsInt(0),
                 args[VthUPD].AsInt(0),
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
-                args[threads].AsInt(1),
+                args[Threads].AsInt(0),
                 env);
         else
             return new TTempSmooth<true, false>(
@@ -1032,14 +1042,14 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[V].AsInt(3),
                 pfclip,
                 args[Opt].AsInt(-1),
-                args[pmode].AsInt(0),
+                args[Pmode].AsInt(0),
                 args[YthUPD].AsInt(0),
                 args[UthUPD].AsInt(0),
                 args[VthUPD].AsInt(0),
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
-                args[threads].AsInt(1),
+                args[Threads].AsInt(0),
                 env);
     }
     else
@@ -1061,14 +1071,14 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[V].AsInt(3),
                 pfclip,
                 args[Opt].AsInt(-1),
-                args[pmode].AsInt(0),
+                args[Pmode].AsInt(0),
                 args[YthUPD].AsInt(0),
                 args[UthUPD].AsInt(0),
                 args[VthUPD].AsInt(0),
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
-                args[threads].AsInt(1),
+                args[Threads].AsInt(0),
                 env);
         else
             return new TTempSmooth<false, false>(
@@ -1087,14 +1097,14 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[V].AsInt(3),
                 pfclip,
                 args[Opt].AsInt(-1),
-                args[pmode].AsInt(0),
+                args[Pmode].AsInt(0),
                 args[YthUPD].AsInt(0),
                 args[UthUPD].AsInt(0),
                 args[VthUPD].AsInt(0),
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
-                args[threads].AsInt(1),
+                args[Threads].AsInt(0),
                 env);
     }
 }
