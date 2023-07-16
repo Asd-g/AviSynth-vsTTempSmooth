@@ -695,9 +695,12 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
         {
             case 1: compare = ComparePlane_avx512<uint8_t>; break;
             case 2: compare = ComparePlane_avx512<uint16_t>; break;
-            default: compare = ComparePlane_avx512<float>;
+            default:
+            {
+                compare = ComparePlane_avx512<float>;
                 if (_pmode == 1)
                     filter_mode2 = &TTempSmooth::filterF_mode2_avx512;
+            }
         }
     }
     else if (_opt == 2)
