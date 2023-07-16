@@ -144,6 +144,7 @@ vsTTempSmooth(clip, int "ythresh", int "uthresh", int "vthresh", int "ymdiff", b
         - Git
         - C++17 compiler
         - CMake >= 3.16
+        - OpenMP
     ```
     ```
     git clone https://github.com/Asd-g/AviSynth-vsTTempSmooth && \
