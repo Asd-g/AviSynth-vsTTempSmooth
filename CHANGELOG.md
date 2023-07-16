@@ -1,3 +1,6 @@
+##### 1.2.4:
+    Added parameters pmode, y/u/vthupd, y/u/vpnew, threads. (@DTL2020)
+    
 ##### 1.2.3:
     Improved SIMD code. (@DTL2020)
 
