@@ -950,7 +950,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
-                args[Threads].AsInt(0),
+                args[Threads].AsInt(1),
                 env);
         else
             return new TTempSmooth<true, false>(
@@ -976,7 +976,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
-                args[Threads].AsInt(0),
+                args[Threads].AsInt(1),
                 env);
     }
     else
@@ -1005,7 +1005,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
-                args[Threads].AsInt(0),
+                args[Threads].AsInt(1),
                 env);
         else
             return new TTempSmooth<false, false>(
@@ -1031,7 +1031,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0),
                 args[Vpnew].AsInt(0),
-                args[Threads].AsInt(0),
+                args[Threads].AsInt(1),
                 env);
     }
 }
