@@ -33,13 +33,13 @@ class TTempSmooth : public GenericVideoFilter
     int _opt;
 
     int _pmode;
-    uint8_t* pIIRMemY;
-    uint8_t* pIIRMemU;
-    uint8_t* pIIRMemV;
+    std::vector<uint8_t> pIIRMemY;
+    std::vector<uint8_t> pIIRMemU;
+    std::vector<uint8_t> pIIRMemV;
     int _thUPD[3];
-    int* pMinSumMemY;
-    int* pMinSumMemU;
-    int* pMinSumMemV;
+    std::vector<int> pMinSumMemY;
+    std::vector<int> pMinSumMemU;
+    std::vector<int> pMinSumMemV;
     int _pnew[3];
     int _threads;
 
@@ -82,7 +82,6 @@ class TTempSmooth : public GenericVideoFilter
     int iMEL_mem_hits;
     int iMEL_mem_updates;
 #endif
-    ~TTempSmooth(void);
 
 public:
     TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh,

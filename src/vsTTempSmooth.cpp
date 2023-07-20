@@ -1,4 +1,5 @@
 #include <cstdlib>
+#include <limits>
 #include <string>
 #include <thread>
 
@@ -271,14 +272,14 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
     const working_t pnew = (sizeof(T) <= 2) ? (_pnew[l] << _shift) : (_pnew[l] / 256.0f);
 
     T* g_pMem = 0;
-    if ((plane >> 1) == 0) g_pMem = reinterpret_cast<T*>(pIIRMemY);
-    if ((plane >> 1) == 1) g_pMem = reinterpret_cast<T*>(pIIRMemU);
-    if ((plane >> 1) == 2) g_pMem = reinterpret_cast<T*>(pIIRMemV);
+    if ((plane >> 1) == 0) g_pMem = reinterpret_cast<T*>(pIIRMemY.data());
+    if ((plane >> 1) == 1) g_pMem = reinterpret_cast<T*>(pIIRMemU.data());
+    if ((plane >> 1) == 2) g_pMem = reinterpret_cast<T*>(pIIRMemV.data());
 
     working_t* g_pMemSum = 0;
-    if ((plane >> 1) == 0) g_pMemSum = (working_t*)pMinSumMemY;
-    if ((plane >> 1) == 1) g_pMemSum = (working_t*)pMinSumMemU;
-    if ((plane >> 1) == 2) g_pMemSum = (working_t*)pMinSumMemV;
+    if ((plane >> 1) == 0) g_pMemSum = (working_t*)pMinSumMemY.data();
+    if ((plane >> 1) == 1) g_pMemSum = (working_t*)pMinSumMemU.data();
+    if ((plane >> 1) == 2) g_pMemSum = (working_t*)pMinSumMemV.data();
 
     const working_t MaxSumDM = (sizeof(T) < 2) ? 255 * (_maxr * 2 + 1) : 65535 * (_maxr * 2 + 1); // 65535 is enough max for float too
 
@@ -536,60 +537,24 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
 
     const VideoInfo& vi_src = _child->GetVideoInfo();
 
-    pIIRMemY = 0;
-    pIIRMemU = 0;
-    pIIRMemV = 0;
-    pMinSumMemY = 0;
-    pMinSumMemU = 0;
-    pMinSumMemV = 0;
-
-    int iMaxSum;
-
-    if (vi_src.ComponentSize() == 1)
-        iMaxSum = 255 * _maxr;
-    else if (vi_src.ComponentSize() == 2)
-        iMaxSum = 65535 * _maxr;
-
+    static constexpr int iMaxSum = std::numeric_limits<int>::max();
 
     if (_thUPD[0] > 0)
     {
-        pIIRMemY = (uint8_t*)malloc(vi_src.width * vi_src.height * vi_src.ComponentSize());
-        pMinSumMemY = (int*)malloc(vi_src.width * vi_src.height * sizeof(int));
-
-        if (vi_src.ComponentSize() <= 2)
-        {
-            for (int i = 0; i < vi_src.width * vi_src.height; i++) pMinSumMemY[i] = iMaxSum;
-        }
-        else
-            for (int i = 0; i < vi_src.width * vi_src.height; i++) ((float*)pMinSumMemY)[i] = 2.0f;
-
+        pIIRMemY.resize(vi_src.width * vi_src.height * vi_src.ComponentSize(), 0);
+        pMinSumMemY.resize(vi_src.width * vi_src.height, iMaxSum);
     }
 
     if (_thUPD[1] > 0)
     {
-        pIIRMemU = (uint8_t*)malloc(vi_src.width * vi_src.height * vi_src.ComponentSize());
-        pMinSumMemU = (int*)malloc(vi_src.width * vi_src.height * sizeof(int));
-
-        if (vi_src.ComponentSize() <= 2)
-        {
-            for (int i = 0; i < vi_src.width * vi_src.height; i++) pMinSumMemU[i] = iMaxSum;
-        }
-        else
-            for (int i = 0; i < vi_src.width * vi_src.height; i++) ((float*)pMinSumMemU)[i] = 2.0f;
-
+        pIIRMemU.resize(vi_src.width * vi_src.height * vi_src.ComponentSize(), 0);
+        pMinSumMemU.resize(vi_src.width * vi_src.height, iMaxSum);
     }
 
     if (_thUPD[2] > 0)
     {
-        pIIRMemV = (uint8_t*)malloc(vi_src.width * vi_src.height * vi_src.ComponentSize());
-        pMinSumMemV = (int*)malloc(vi_src.width * vi_src.height * sizeof(int));
-
-        if (vi_src.ComponentSize() <= 2)
-        {
-            for (int i = 0; i < vi_src.width * vi_src.height; i++) pMinSumMemV[i] = iMaxSum;
-        }
-        else
-            for (int i = 0; i < vi_src.width * vi_src.height; i++) ((float*)pMinSumMemV)[i] = 2.0f;
+        pIIRMemV.resize(vi_src.width * vi_src.height * vi_src.ComponentSize(), 0);
+        pMinSumMemV.resize(vi_src.width * vi_src.height, iMaxSum);
     }
 
 
@@ -771,48 +736,6 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
     iMEL_mem_hits = 0;
     iMEL_mem_updates = 0;
 #endif
-
-}
-
-template <bool pfclip, bool fp>
-TTempSmooth<pfclip, fp>::~TTempSmooth(void)
-{
-    if (pIIRMemY != 0)
-    {
-        free(pIIRMemY);
-        pIIRMemY = 0;
-    }
-
-    if (pIIRMemU != 0)
-    {
-        free(pIIRMemU);
-        pIIRMemU = 0;
-    }
-
-    if (pIIRMemV != 0)
-    {
-        free(pIIRMemV);
-        pIIRMemV = 0;
-    }
-
-    if (pMinSumMemY != 0)
-    {
-        free(pMinSumMemY);
-        pMinSumMemY = 0;
-    }
-
-    if (pMinSumMemU != 0)
-    {
-        free(pMinSumMemU);
-        pMinSumMemU = 0;
-    }
-
-    if (pMinSumMemV != 0)
-    {
-        free(pMinSumMemV);
-        pMinSumMemV = 0;
-    }
-
 
 }
 
