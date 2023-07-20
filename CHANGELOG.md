@@ -1,6 +1,9 @@
+##### 1.2.5:
+    Changed back default threads to 1
+
 ##### 1.2.4:
     Added parameters pmode, y/u/vthupd, y/u/vpnew, threads. (@DTL2020)
-    
+
 ##### 1.2.3:
     Improved SIMD code. (@DTL2020)
 

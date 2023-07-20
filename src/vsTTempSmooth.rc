@@ -2,8 +2,8 @@
 #include <ntdef.h>
 
 1 VERSIONINFO
-FILEVERSION             1,2,4,0
-PRODUCTVERSION        	1,2,4,0
+FILEVERSION             1,2,5,0
+PRODUCTVERSION        	1,2,5,0
 FILEFLAGSMASK           VS_FFI_FILEFLAGSMASK
 FILETYPE                VFT_DLL
 BEGIN
@@ -13,11 +13,11 @@ BEGIN
         BEGIN
         VALUE "Comments",         "A motion adaptive (it only works on stationary parts of the picture), temporal smoothing filter."
         VALUE "FileDescription",  "TTempSmooth for AviSynth 2.6 / AviSynth+"
-        VALUE "FileVersion",      "1.2.4"
+        VALUE "FileVersion",      "1.2.5"
         VALUE "InternalName",     "vsTTempSmooth"
         VALUE "OriginalFilename", "vsTTempSmooth.dll"
         VALUE "ProductName",      "vsTTempSmooth"
-        VALUE "ProductVersion",   "1.2.4"
+        VALUE "ProductVersion",   "1.2.5"
         END
     END
     BLOCK "VarFileInfo"
