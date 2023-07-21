@@ -535,26 +535,24 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
 
     const int planes[3] = { y, u, v };
 
-    const VideoInfo& vi_src = _child->GetVideoInfo();
-
     static constexpr int iMaxSum = std::numeric_limits<int>::max();
 
     if (_thUPD[0] > 0)
     {
-        pIIRMemY.resize(vi_src.width * vi_src.height * vi_src.ComponentSize(), 0);
-        pMinSumMemY.resize(vi_src.width * vi_src.height, iMaxSum);
+        pIIRMemY.resize(vi.width * vi.height * vi.ComponentSize(), 0);
+        pMinSumMemY.resize(vi.width * vi.height, iMaxSum);
     }
 
     if (_thUPD[1] > 0)
     {
-        pIIRMemU.resize(vi_src.width * vi_src.height * vi_src.ComponentSize(), 0);
-        pMinSumMemU.resize(vi_src.width * vi_src.height, iMaxSum);
+        pIIRMemU.resize(vi.width * vi.height * vi.ComponentSize(), 0);
+        pMinSumMemU.resize(vi.width * vi.height, iMaxSum);
     }
 
     if (_thUPD[2] > 0)
     {
-        pIIRMemV.resize(vi_src.width * vi_src.height * vi_src.ComponentSize(), 0);
-        pMinSumMemV.resize(vi_src.width * vi_src.height, iMaxSum);
+        pIIRMemV.resize(vi.width * vi.height * vi.ComponentSize(), 0);
+        pMinSumMemV.resize(vi.width * vi.height, iMaxSum);
     }
 
 
