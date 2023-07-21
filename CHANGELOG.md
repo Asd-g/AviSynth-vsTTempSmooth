@@ -1,5 +1,8 @@
+##### 1.2.6:
+    Fixed undefined behavior when float input (pmode=1, regression from 1.2.5).
+
 ##### 1.2.5:
-    Changed back default threads to 1
+    Changed back default threads to 1.
 
 ##### 1.2.4:
     Added parameters pmode, y/u/vthupd, y/u/vpnew, threads. (@DTL2020)
