@@ -73,15 +73,12 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD *
 
     const int thUPD{ _thUPD[l] << _shift };
     const int pnew{ _pnew[l] << _shift };
+
     T* g_pMem = 0;
-    if ((plane >> 1) == 0) g_pMem = reinterpret_cast<T*>(pIIRMemY.data());
-    if ((plane >> 1) == 1) g_pMem = reinterpret_cast<T*>(pIIRMemU.data());
-    if ((plane >> 1) == 2) g_pMem = reinterpret_cast<T*>(pIIRMemV.data());
+    g_pMem = reinterpret_cast<T*>(pIIRMem[l].data());
 
     int* g_pMemSum = 0;
-    if ((plane >> 1) == 0) g_pMemSum = pMinSumMemY.data();
-    if ((plane >> 1) == 1) g_pMemSum = pMinSumMemU.data();
-    if ((plane >> 1) == 2) g_pMemSum = pMinSumMemV.data();
+    g_pMemSum = pMinSumMem[l].data();
 
     const int iMaxSumDM = (sizeof(T) < 2) ? 255 * (_maxr * 2 + 1) : 65535 * (_maxr * 2 + 1);
 
@@ -470,17 +467,9 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD *
 
     const float thUPD{ (_thUPD[l] / 256.0f) };
     const float pnew{ (_pnew[l] / 256.0f) };
-    float* g_pMem = 0;
-    if ((plane >> 1) == 0) g_pMem = reinterpret_cast<float*>(pIIRMemY.data());
-    if ((plane >> 1) == 1) g_pMem = reinterpret_cast<float*>(pIIRMemU.data());
-    if ((plane >> 1) == 2) g_pMem = reinterpret_cast<float*>(pIIRMemV.data());
-
-    float* g_pMemSum = 0;
-    if ((plane >> 1) == 0) g_pMemSum = (float*)pMinSumMemY.data();
-    if ((plane >> 1) == 1) g_pMemSum = (float*)pMinSumMemU.data();
-    if ((plane >> 1) == 2) g_pMemSum = (float*)pMinSumMemV.data();
-
-    const float fMaxSumDM = 2.0f;
+    float* g_pMem{ reinterpret_cast<float*>(pIIRMem[l].data()) };
+    float* g_pMemSum{ pMinSumMemF[l].data() };
+    const float fMaxSumDM{ 2.0f };
 
     for (int i{ 0 }; i < _diameter; ++i)
     {

@@ -33,13 +33,10 @@ class TTempSmooth : public GenericVideoFilter
     int _opt;
 
     int _pmode;
-    std::vector<uint8_t> pIIRMemY;
-    std::vector<uint8_t> pIIRMemU;
-    std::vector<uint8_t> pIIRMemV;
+    std::array<std::vector<uint8_t>, 3> pIIRMem;
     int _thUPD[3];
-    std::vector<int> pMinSumMemY;
-    std::vector<int> pMinSumMemU;
-    std::vector<int> pMinSumMemV;
+    std::array<std::vector<int>, 3> pMinSumMem;
+    std::array<std::vector<float>, 3> pMinSumMemF;
     int _pnew[3];
     int _threads;
 

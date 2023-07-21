@@ -264,23 +264,14 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
 
     const int l{ plane >> 1 };
 
-    typedef typename std::conditional < sizeof(T) <= 2, int, float>::type working_t;
+    typedef typename std::conditional <sizeof(T) <= 2, int, float>::type working_t;
 
     const working_t thresh = (sizeof(T) <= 2) ? (_thresh[l] << _shift) : (_thresh[l] / 256.0f);
 
     const working_t thUPD = (sizeof(T) <= 2) ? (_thUPD[l] << _shift) : (_thUPD[l] / 256.0f);
     const working_t pnew = (sizeof(T) <= 2) ? (_pnew[l] << _shift) : (_pnew[l] / 256.0f);
-
-    T* g_pMem = 0;
-    if ((plane >> 1) == 0) g_pMem = reinterpret_cast<T*>(pIIRMemY.data());
-    if ((plane >> 1) == 1) g_pMem = reinterpret_cast<T*>(pIIRMemU.data());
-    if ((plane >> 1) == 2) g_pMem = reinterpret_cast<T*>(pIIRMemV.data());
-
-    working_t* g_pMemSum = 0;
-    if ((plane >> 1) == 0) g_pMemSum = (working_t*)pMinSumMemY.data();
-    if ((plane >> 1) == 1) g_pMemSum = (working_t*)pMinSumMemU.data();
-    if ((plane >> 1) == 2) g_pMemSum = (working_t*)pMinSumMemV.data();
-
+    T* g_pMem{ reinterpret_cast<T*>(pIIRMem[l].data()) };
+    working_t* g_pMemSum{ (vi.ComponentSize() < 4) ? reinterpret_cast<working_t*>(pMinSumMem[l].data()) : reinterpret_cast<working_t*>(pMinSumMemF[l].data()) };
     const working_t MaxSumDM = (sizeof(T) < 2) ? 255 * (_maxr * 2 + 1) : 65535 * (_maxr * 2 + 1); // 65535 is enough max for float too
 
     for (int i{ 0 }; i < _diameter; ++i)
@@ -536,28 +527,20 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
     const int planes[3] = { y, u, v };
 
     static constexpr int iMaxSum = std::numeric_limits<int>::max();
-
-    if (_thUPD[0] > 0)
-    {
-        pIIRMemY.resize(vi.width * vi.height * vi.ComponentSize(), 0);
-        pMinSumMemY.resize(vi.width * vi.height, iMaxSum);
-    }
-
-    if (_thUPD[1] > 0)
-    {
-        pIIRMemU.resize(vi.width * vi.height * vi.ComponentSize(), 0);
-        pMinSumMemU.resize(vi.width * vi.height, iMaxSum);
-    }
-
-    if (_thUPD[2] > 0)
-    {
-        pIIRMemV.resize(vi.width * vi.height * vi.ComponentSize(), 0);
-        pMinSumMemV.resize(vi.width * vi.height, iMaxSum);
-    }
-
+    static constexpr float fMaxSum = std::numeric_limits<float>::max();
 
     for (int i{ 0 }; i < std::min(vi.NumComponents(), 3); ++i)
     {
+        if (_thUPD[i] > 0)
+        {
+            pIIRMem[i].resize(vi.width * vi.height * vi.ComponentSize(), 0);
+
+            if (vi.ComponentSize() < 4)
+                pMinSumMem[i].resize(vi.width * vi.height, iMaxSum);
+            else
+                pMinSumMemF[i].resize(vi.width * vi.height, fMaxSum);
+        }
+
         switch (planes[i])
         {
             case 3: proccesplanes[i] = 3; break;
