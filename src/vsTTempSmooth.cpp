@@ -525,22 +525,11 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
     }
 
     const int planes[3] = { y, u, v };
-
     static constexpr int iMaxSum = std::numeric_limits<int>::max();
     static constexpr float fMaxSum = std::numeric_limits<float>::max();
 
     for (int i{ 0 }; i < std::min(vi.NumComponents(), 3); ++i)
     {
-        if (_thUPD[i] > 0)
-        {
-            pIIRMem[i].resize(vi.width * vi.height * vi.ComponentSize(), 0);
-
-            if (vi.ComponentSize() < 4)
-                pMinSumMem[i].resize(vi.width * vi.height, iMaxSum);
-            else
-                pMinSumMemF[i].resize(vi.width * vi.height, fMaxSum);
-        }
-
         switch (planes[i])
         {
             case 3: proccesplanes[i] = 3; break;
@@ -549,73 +538,85 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
             default: env->ThrowError("vsTTempSmooth: y / u / v must be between 1..3.");
         }
 
-        if ((proccesplanes[i] == 3) && (_pmode == 0)) // not support maxr > 7 ?
+        if (proccesplanes[i] == 3) // not support maxr > 7 ?
         {
-            if (_thresh[i] > _mdiff[i] + 1)
+            if (_pmode == 0)
             {
-                _weight[i].resize(256 * _maxr);
-                float dt[15] = {}, rt[256] = {}, sum = 0.f;
-
-                for (int i{ 0 }; i < strength && i <= _maxr; ++i)
-                    dt[i] = 1.f;
-                for (int i{ strength }; i <= _maxr; ++i)
-                    dt[i] = 1.f / (i - strength + 2);
-
-                const float step{ 256.f / (_thresh[i] - std::min(_mdiff[i], _thresh[i] - 1)) };
-                float base{ 256.f };
-                for (int j{ 0 }; j < _thresh[i]; ++j)
+                if (_thresh[i] > _mdiff[i] + 1)
                 {
-                    if (_mdiff[i] > j)
+                    _weight[i].resize(256 * _maxr);
+                    float dt[15] = {}, rt[256] = {}, sum = 0.f;
+
+                    for (int i{ 0 }; i < strength && i <= _maxr; ++i)
+                        dt[i] = 1.f;
+                    for (int i{ strength }; i <= _maxr; ++i)
+                        dt[i] = 1.f / (i - strength + 2);
+
+                    const float step{ 256.f / (_thresh[i] - std::min(_mdiff[i], _thresh[i] - 1)) };
+                    float base{ 256.f };
+                    for (int j{ 0 }; j < _thresh[i]; ++j)
                     {
-                        rt[j] = 256.f;
-                    }
-                    else
-                    {
-                        if (base > 0.f)
-                            rt[j] = base;
+                        if (_mdiff[i] > j)
+                        {
+                            rt[j] = 256.f;
+                        }
                         else
-                            break;
-                        base -= step;
+                        {
+                            if (base > 0.f)
+                                rt[j] = base;
+                            else
+                                break;
+                            base -= step;
+                        }
                     }
-                }
 
-                sum += dt[0];
-                for (int j{ 1 }; j <= _maxr; ++j)
+                    sum += dt[0];
+                    for (int j{ 1 }; j <= _maxr; ++j)
+                    {
+                        sum += dt[j] * 2.f;
+                        for (int v{ 0 }; v < 256; ++v)
+                            _weight[i][256 * (j - 1) + v] = dt[j] * rt[v] / 256.f;
+                    }
+
+                    for (int j{ 0 }; j < 256 * _maxr; ++j)
+                        _weight[i][j] /= sum;
+
+                    _cw = dt[0] / sum;
+                }
+                else
                 {
-                    sum += dt[j] * 2.f;
-                    for (int v{ 0 }; v < 256; ++v)
-                        _weight[i][256 * (j - 1) + v] = dt[j] * rt[v] / 256.f;
+                    _weight[i].resize(_diameter);
+                    float dt[15] = {}, sum = 0.f;
+
+                    for (int i{ 0 }; i < strength && i <= _maxr; ++i)
+                        dt[_maxr - i] = dt[_maxr + i] = 1.f;
+                    for (int i{ strength }; i <= _maxr; ++i)
+                        dt[_maxr - i] = dt[_maxr + i] = 1.f / (i - strength + 2);
+
+                    for (int j{ 0 }; j < _diameter; ++j)
+                    {
+                        sum += dt[j];
+                        _weight[i][j] = dt[j];
+                    }
+
+                    for (int j{ 0 }; j < _diameter; ++j)
+                        _weight[i][j] /= sum;
+
+                    _cw = _weight[i][_maxr];
                 }
 
-                for (int j{ 0 }; j < 256 * _maxr; ++j)
-                    _weight[i][j] /= sum;
-
-                _cw = dt[0] / sum;
+                if (vi.ComponentSize() == 4)
+                    _threshF[i] = _thresh[i] / 256.f;
             }
-            else
+            else if (_pmode == 1 && _thUPD[i] > 0)
             {
-                _weight[i].resize(_diameter);
-                float dt[15] = {}, sum = 0.f;
+                pIIRMem[i].resize(vi.width * vi.height * vi.ComponentSize(), 0);
 
-                for (int i{ 0 }; i < strength && i <= _maxr; ++i)
-                    dt[_maxr - i] = dt[_maxr + i] = 1.f;
-                for (int i{ strength }; i <= _maxr; ++i)
-                    dt[_maxr - i] = dt[_maxr + i] = 1.f / (i - strength + 2);
-
-                for (int j{ 0 }; j < _diameter; ++j)
-                {
-                    sum += dt[j];
-                    _weight[i][j] = dt[j];
-                }
-
-                for (int j{ 0 }; j < _diameter; ++j)
-                    _weight[i][j] /= sum;
-
-                _cw = _weight[i][_maxr];
+                if (vi.ComponentSize() < 4)
+                    pMinSumMem[i].resize(vi.width * vi.height, iMaxSum);
+                else
+                    pMinSumMemF[i].resize(vi.width * vi.height, fMaxSum);
             }
-
-            if (vi.ComponentSize() == 4)
-                _threshF[i] = _thresh[i] / 256.f;
         }
     }
 
