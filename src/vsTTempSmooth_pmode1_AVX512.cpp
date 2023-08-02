@@ -451,7 +451,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD
     const float thUPD{ (_thUPD[l] / 256.0f) };
     const float pnew{ (_pnew[l] / 256.0f) };
     float* g_pMem{ reinterpret_cast<float*>(pIIRMem[l].data()) };
-    float* g_pMemSum{ pMinSumMemF[l].data() };
+    float* g_pMemSum{ reinterpret_cast<float*>(pMinSumMem[l].data()) };
     const float fMaxSumDM{ 2.0f };
 
     for (int i{ 0 }; i < _diameter; ++i)

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <variant>
 #include <vector>
 
 #include "avisynth.h"
@@ -35,8 +36,7 @@ class TTempSmooth : public GenericVideoFilter
     int _pmode;
     std::array<std::vector<uint8_t>, 3> pIIRMem;
     int _thUPD[3];
-    std::array<std::vector<int>, 3> pMinSumMem;
-    std::array<std::vector<float>, 3> pMinSumMemF;
+    std::array<std::vector<std::variant<int, float>>, 3> pMinSumMem;
     int _pnew[3];
     int _threads;
 

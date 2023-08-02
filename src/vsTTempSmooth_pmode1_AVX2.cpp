@@ -78,7 +78,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD *
     g_pMem = reinterpret_cast<T*>(pIIRMem[l].data());
 
     int* g_pMemSum = 0;
-    g_pMemSum = pMinSumMem[l].data();
+    g_pMemSum = reinterpret_cast<int*>(pMinSumMem[l].data());
 
     const int iMaxSumDM = (sizeof(T) < 2) ? 255 * (_maxr * 2 + 1) : 65535 * (_maxr * 2 + 1);
 
@@ -468,7 +468,7 @@ void TTempSmooth<pfclip, fp>::filterF_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD *
     const float thUPD{ (_thUPD[l] / 256.0f) };
     const float pnew{ (_pnew[l] / 256.0f) };
     float* g_pMem{ reinterpret_cast<float*>(pIIRMem[l].data()) };
-    float* g_pMemSum{ pMinSumMemF[l].data() };
+    float* g_pMemSum{ reinterpret_cast<float*>(pMinSumMem[l].data()) };
     const float fMaxSumDM{ 2.0f };
 
     for (int i{ 0 }; i < _diameter; ++i)

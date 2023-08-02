@@ -271,7 +271,7 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
     const working_t thUPD = (sizeof(T) <= 2) ? (_thUPD[l] << _shift) : (_thUPD[l] / 256.0f);
     const working_t pnew = (sizeof(T) <= 2) ? (_pnew[l] << _shift) : (_pnew[l] / 256.0f);
     T* g_pMem{ reinterpret_cast<T*>(pIIRMem[l].data()) };
-    working_t* g_pMemSum{ (vi.ComponentSize() < 4) ? reinterpret_cast<working_t*>(pMinSumMem[l].data()) : reinterpret_cast<working_t*>(pMinSumMemF[l].data()) };
+    working_t* g_pMemSum{ reinterpret_cast<working_t*>(pMinSumMem[l].data()) };
     const working_t MaxSumDM = (sizeof(T) < 2) ? 255 * (_maxr * 2 + 1) : 65535 * (_maxr * 2 + 1); // 65535 is enough max for float too
 
     for (int i{ 0 }; i < _diameter; ++i)
@@ -612,10 +612,7 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
             {
                 pIIRMem[i].resize(vi.width * vi.height * vi.ComponentSize(), 0);
 
-                if (vi.ComponentSize() < 4)
-                    pMinSumMem[i].resize(vi.width * vi.height, iMaxSum);
-                else
-                    pMinSumMemF[i].resize(vi.width * vi.height, fMaxSum);
+                pMinSumMem[i].resize(vi.width * vi.height, (vi.ComponentSize() < 4) ? iMaxSum : fMaxSum);
             }
         }
     }
