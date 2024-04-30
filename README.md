@@ -112,6 +112,7 @@ vsTTempSmooth(clip, int "ythresh", int "uthresh", int "vthresh", int "ymdiff", b
     Which mode to use.<br>
     0: Checking the motion thresholds and calculating inverse difference weights.<br>
     1: It tries to select "the best" sample from the total pool of input samples in the temporal axis for current position in frame using some algorithm of selecting "most equal/probable" value. More info [here](https://github.com/Asd-g/AviSynth-vsTTempSmooth/pull/8#issuecomment-1616112102).<br>
+    `pmode=1` with thresholds = 255 is more or less equal to the MedianBlurTemporal AVS plugin. It is slower with `maxr=1` and possibly with `maxr=2`, and significantly faster with `maxr > 2` Also it provides additional functions of possible threshold to limit max difference with source sample and some optional temporal IIR filtering. More info [here](https://github.com/Asd-g/AviSynth-vsTTempSmooth/issues/7#issuecomment-2083117936).<br>
     Default: 0.
 
 - ythupd, uthupd, vthupd (only for pmode=1)<br>
