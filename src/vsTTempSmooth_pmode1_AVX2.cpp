@@ -131,7 +131,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD *
         pMem = g_pMem + y * width;
         pMemSum = g_pMemSum + y * width;
 
-        for (int x{ 0 }; x < width; x += 32)
+        for (int x{ 0 }; x < static_cast<int>(width); x += 32)
         {
             // copy all input frames processed samples in SIMD pass in the temp buf in uint32 form
             for (int i = 0; i < (_maxr * 2 + 1); i++)
