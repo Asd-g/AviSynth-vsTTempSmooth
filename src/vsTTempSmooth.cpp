@@ -33,7 +33,7 @@ void TTempSmooth<pfclip, fp>::filterI(PVideoFrame src[15], PVideoFrame pf[15], P
 
     for (int y{ 0 }; y < height; ++y)
     {
-        for (int x{ 0 }; x < width; ++x)
+        for (int x{ 0 }; x < static_cast<int>(width); ++x)
         {
             const int c{ static_cast<int>(pfp[_maxr][x]) };
             float weights{ _cw };
@@ -307,7 +307,7 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
         pMem = g_pMem + y * width;
         pMemSum = g_pMemSum + y * width;
 
-        for (int x{ 0 }; x < width; ++x)
+        for (int x{ 0 }; x < static_cast<int>(width); ++x)
         {
 
             // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
@@ -396,7 +396,7 @@ void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 +
             }
 
             // check if best is below thresh-difference from current src
-            if (((sizeof(T) <= 2) ? INTABS(*best_data_ptr - pfp[_maxr][x]) : std::abs(*best_data_ptr - pfp[_maxr][x])) < thresh)
+            if (((sizeof(T) <= 2) ? INTABS(*best_data_ptr - pfp[_maxr][x]) : std::abs(*best_data_ptr - pfp[_maxr][x])) < static_cast<unsigned>(thresh))
             {
                 dstp[x] = *best_data_ptr;
             }
@@ -503,7 +503,7 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
 
     if (_threads == 0)
         _threads = thr;
-    else if (_threads < 0 || _threads > thr)
+    else if (_threads < 0 || _threads > static_cast<int>(thr))
         env->ThrowError("vsTTempSmooth: threads must be between 0..%s.", std::to_string(thr).c_str());
 
     const int iset{ instrset_detect() };
