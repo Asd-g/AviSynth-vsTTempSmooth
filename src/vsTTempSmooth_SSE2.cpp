@@ -544,7 +544,7 @@ float ComparePlane_sse2(PVideoFrame& src, PVideoFrame& src1, const int bits_per_
 
     Vec4f accum{ 0.0f };
 
-    for (size_t y{ 0 }; y < height; ++y)
+    for (size_t y{ 0 }; y < static_cast<size_t>(height); ++y)
     {
         for (size_t x{ 0 }; x < width; x += 4)
         {
