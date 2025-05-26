@@ -12,9 +12,11 @@
 #define SIMD_AVX512_SPP 64
 #define SIMD_AVX2_SPP 32
 
-
 [[maybe_unused]]
-static AVS_FORCEINLINE unsigned int INTABS(int x) { return (x < 0) ? -x : x; }
+static AVS_FORCEINLINE unsigned int INTABS(int x)
+{
+    return (x < 0) ? -x : x;
+}
 
 template<bool pfclip, bool fp_template_param>
 class TTempSmooth : public GenericVideoFilter
@@ -40,62 +42,76 @@ class TTempSmooth : public GenericVideoFilter
     int _pnew[3];
     int _threads;
 
+    template<typename T, bool useDiff>
+    void filterI(
+        PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+    template<bool useDiff>
+    void filterF(
+        PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
     template<typename T, bool useDiff>
-    void filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+    void filterI_sse2(
+        PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
     template<bool useDiff>
-    void filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+    void filterF_sse2(
+        PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
     template<typename T, bool useDiff>
-    void filterI_sse2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+    void filterI_avx2(
+        PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
     template<bool useDiff>
-    void filterF_sse2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+    void filterF_avx2(
+        PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
     template<typename T, bool useDiff>
-    void filterI_avx2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+    void filterI_avx512(
+        PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
     template<bool useDiff>
-    void filterF_avx2(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-
-    template<typename T, bool useDiff>
-    void filterI_avx512(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
-    template<bool useDiff>
-    void filterF_avx512(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
+    void filterF_avx512(
+        PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept;
 
     float (*compare)(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
 
     template<typename T>
-    void filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+    void filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst,
+        const int fromFrame, const int toFrame, const int plane);
     template<typename T>
-    void filterI_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+    void filterI_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst,
+        const int fromFrame, const int toFrame, const int plane);
 
-    void filterF_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
-    void filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+    void filterF_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst,
+        const int fromFrame, const int toFrame, const int plane);
+    void filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst,
+        const int fromFrame, const int toFrame, const int plane);
 
-    void(TTempSmooth::* filter_mode2_fn_ptr)(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+    void (TTempSmooth::*filter_mode2_fn_ptr)(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)],
+        PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 
 #ifdef _DEBUG
-    //MEL debug stat
+    // MEL debug stat
     int iMEL_non_current_samples;
     int iMEL_mem_hits;
     int iMEL_mem_updates;
 #endif
 
 public:
-    TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh,
-        int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew, int vpnew, int threads,
-        IScriptEnvironment* env);
+    TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength,
+        float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew,
+        int vpnew, int threads, IScriptEnvironment* env);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
     int __stdcall SetCacheHints(int cachehints, int frame_range) override
     {
         //        return cachehints == CACHE_GET_MTMODE ? MT_MULTI_INSTANCE : 0;
         // set to serialized to correct work of IIR mode ?
-        return cachehints == CACHE_GET_MTMODE ? ((_pmode == 1 && (_thUPD[0] > 0 || _thUPD[1] > 0 || _thUPD[2] > 0)) ? MT_SERIALIZED : MT_MULTI_INSTANCE) : 0;
+        return cachehints == CACHE_GET_MTMODE
+                   ? ((_pmode == 1 && (_thUPD[0] > 0 || _thUPD[1] > 0 || _thUPD[2] > 0)) ? MT_SERIALIZED : MT_MULTI_INSTANCE)
+                   : 0;
     }
 };
 
-template <typename T>
+template<typename T>
 float ComparePlane_sse2(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
-template <typename T>
+template<typename T>
 float ComparePlane_avx2(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
-template <typename T>
+template<typename T>
 float ComparePlane_avx512(PVideoFrame& src, PVideoFrame& src1, const int bits_per_pixel) noexcept;
