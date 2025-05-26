@@ -5,7 +5,7 @@
 #include <variant>
 #include <vector>
 
-#include "avisynth.h"
+#include <avisynth.h>
 
 #define MAX_TEMP_RAD 128
 
@@ -16,7 +16,7 @@
 [[maybe_unused]]
 static AVS_FORCEINLINE unsigned int INTABS(int x) { return (x < 0) ? -x : x; }
 
-template<bool pfclip, bool fp>
+template<bool pfclip, bool fp_template_param>
 class TTempSmooth : public GenericVideoFilter
 {
     int _maxr;
@@ -71,7 +71,7 @@ class TTempSmooth : public GenericVideoFilter
     void filterF_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
     void filterF_mode2_avx512(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 
-    void(TTempSmooth::* filter_mode2)(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
+    void(TTempSmooth::* filter_mode2_fn_ptr)(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 
 #ifdef _DEBUG
     //MEL debug stat

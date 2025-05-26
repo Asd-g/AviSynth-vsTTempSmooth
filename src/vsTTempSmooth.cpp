@@ -3,12 +3,26 @@
 #include <string>
 #include <thread>
 
-#include "VCL2/instrset.h"
 #include "vsTTempSmooth.h"
 
-template <bool pfclip, bool fp>
+static std::vector<int64_t> getPascalRow(int k) {
+    if (k < 0) return { 1LL };
+    std::vector<int64_t> row(k + 1);
+    if (k == 0) {
+        row[0] = 1LL;
+        return row;
+    }
+    row[0] = 1LL;
+    for (int i = 1; i <= k; ++i) {
+        for (int j = i; j >= 1; --j)
+            row[j] += row[j - 1];
+    }
+    return row;
+}
+
+template <bool pfclip, bool fp_template_param>
 template <typename T, bool useDiff>
-void TTempSmooth<pfclip, fp>::filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept
+void TTempSmooth<pfclip, fp_template_param>::filterI(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept
 {
     int src_stride[15]{};
     int pf_stride[15]{};
@@ -28,7 +42,7 @@ void TTempSmooth<pfclip, fp>::filterI(PVideoFrame src[15], PVideoFrame pf[15], P
     T* __restrict dstp{ reinterpret_cast<T*>(dst->GetWritePtr(plane)) };
 
     const int l{ plane >> 1 };
-    const int thresh{ _thresh[l] << _shift };
+    const int thresh_val{ _thresh[l] << _shift };
     const float* const weightSaved{ _weight[l].data() };
 
     for (int y{ 0 }; y < height; ++y)
@@ -36,8 +50,8 @@ void TTempSmooth<pfclip, fp>::filterI(PVideoFrame src[15], PVideoFrame pf[15], P
         for (int x{ 0 }; x < width; ++x)
         {
             const int c{ static_cast<int>(pfp[_maxr][x]) };
-            float weights{ _cw };
-            float sum{ srcp[_maxr][x] * _cw };
+            float current_weights{ _cw };
+            float current_sum{ srcp[_maxr][x] * _cw };
 
             int frameIndex{ _maxr - 1 };
 
@@ -46,29 +60,31 @@ void TTempSmooth<pfclip, fp>::filterI(PVideoFrame src[15], PVideoFrame pf[15], P
                 int t1{ static_cast<int>(pfp[frameIndex][x]) };
                 int diff{ std::abs(c - t1) };
 
-                if (diff < thresh)
+                if (diff < thresh_val)
                 {
-                    float weight{ weightSaved[useDiff ? diff >> _shift : frameIndex] };
-                    weights += weight;
-                    sum += srcp[frameIndex][x] * weight;
+                    int dist_from_center_1_based{ _maxr - frameIndex };
+                    int v_offset_base{ 256 * (dist_from_center_1_based - 1) };
+                    float weight_val{ weightSaved[useDiff ? ((diff >> _shift) + v_offset_base) : frameIndex] };
+                    current_weights += weight_val;
+                    current_sum += srcp[frameIndex][x] * weight_val;
 
                     --frameIndex;
-                    int v{ 256 };
 
                     while (frameIndex > fromFrame)
                     {
                         const int t2{ t1 };
                         t1 = pfp[frameIndex][x];
                         diff = std::abs(c - t1);
+                        dist_from_center_1_based = _maxr - frameIndex;
+                        v_offset_base = 256 * (dist_from_center_1_based - 1);
 
-                        if (diff < thresh && std::abs(t1 - t2) < thresh)
+                        if (diff < thresh_val && std::abs(t1 - t2) < thresh_val)
                         {
-                            weight = weightSaved[useDiff ? (diff >> _shift) + v : frameIndex];
-                            weights += weight;
-                            sum += srcp[frameIndex][x] * weight;
+                            weight_val = weightSaved[useDiff ? ((diff >> _shift) + v_offset_base) : frameIndex];
+                            current_weights += weight_val;
+                            current_sum += srcp[frameIndex][x] * weight_val;
 
                             --frameIndex;
-                            v += 256;
                         }
                         else
                             break;
@@ -83,29 +99,31 @@ void TTempSmooth<pfclip, fp>::filterI(PVideoFrame src[15], PVideoFrame pf[15], P
                 int t1{ static_cast<int>(pfp[frameIndex][x]) };
                 int diff{ std::abs(c - t1) };
 
-                if (diff < thresh)
+                if (diff < thresh_val)
                 {
-                    float weight{ weightSaved[useDiff ? diff >> _shift : frameIndex] };
-                    weights += weight;
-                    sum += srcp[frameIndex][x] * weight;
+                    int dist_from_center_1_based{ frameIndex - _maxr };
+                    int v_offset_base{ 256 * (dist_from_center_1_based - 1) };
+                    float weight_val{ weightSaved[useDiff ? ((diff >> _shift) + v_offset_base) : frameIndex] };
+                    current_weights += weight_val;
+                    current_sum += srcp[frameIndex][x] * weight_val;
 
                     ++frameIndex;
-                    int v{ 256 };
 
                     while (frameIndex < toFrame)
                     {
                         const int t2{ t1 };
                         t1 = pfp[frameIndex][x];
                         diff = std::abs(c - t1);
+                        dist_from_center_1_based = frameIndex - _maxr;
+                        v_offset_base = 256 * (dist_from_center_1_based - 1);
 
-                        if (diff < thresh && std::abs(t1 - t2) < thresh)
+                        if (diff < thresh_val && std::abs(t1 - t2) < thresh_val)
                         {
-                            weight = weightSaved[useDiff ? (diff >> _shift) + v : frameIndex];
-                            weights += weight;
-                            sum += srcp[frameIndex][x] * weight;
+                            weight_val = weightSaved[useDiff ? ((diff >> _shift) + v_offset_base) : frameIndex];
+                            current_weights += weight_val;
+                            current_sum += srcp[frameIndex][x] * weight_val;
 
                             ++frameIndex;
-                            v += 256;
                         }
                         else
                             break;
@@ -113,10 +131,10 @@ void TTempSmooth<pfclip, fp>::filterI(PVideoFrame src[15], PVideoFrame pf[15], P
                 }
             }
 
-            if constexpr (fp)
-                dstp[x] = static_cast<T>(srcp[_maxr][x] * (1.f - weights) + sum + 0.5f);
+            if constexpr (fp_template_param)
+                dstp[x] = static_cast<T>(srcp[_maxr][x] * (1.f - current_weights) + current_sum + 0.5f);
             else
-                dstp[x] = static_cast<T>(sum / weights + 0.5f);
+                dstp[x] = (current_weights == 0.0f) ? srcp[_maxr][x] : static_cast<T>(current_sum / current_weights + 0.5f);
         }
 
         for (int i{ 0 }; i < _diameter; ++i)
@@ -129,9 +147,9 @@ void TTempSmooth<pfclip, fp>::filterI(PVideoFrame src[15], PVideoFrame pf[15], P
     }
 }
 
-template <bool pfclip, bool fp>
+template <bool pfclip, bool fp_template_param>
 template <bool useDiff>
-void TTempSmooth<pfclip, fp>::filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept
+void TTempSmooth<pfclip, fp_template_param>::filterF(PVideoFrame src[15], PVideoFrame pf[15], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane) noexcept
 {
     int src_stride[15]{};
     int pf_stride[15]{};
@@ -150,7 +168,7 @@ void TTempSmooth<pfclip, fp>::filterF(PVideoFrame src[15], PVideoFrame pf[15], P
     float* __restrict dstp{ reinterpret_cast<float*>(dst->GetWritePtr(plane)) };
 
     const int l{ plane >> 1 };
-    const float thresh{ _threshF[l] };
+    const float thresh_val{ _threshF[l] };
     const float* const weightSaved{ _weight[l].data() };
 
     for (int y{ 0 }; y < height; ++y)
@@ -158,8 +176,8 @@ void TTempSmooth<pfclip, fp>::filterF(PVideoFrame src[15], PVideoFrame pf[15], P
         for (int x{ 0 }; x < width; ++x)
         {
             const float c{ pfp[_maxr][x] };
-            float weights{ _cw };
-            float sum{ srcp[_maxr][x] * _cw };
+            float current_weights{ _cw };
+            float current_sum{ srcp[_maxr][x] * _cw };
 
             int frameIndex{ _maxr - 1 };
 
@@ -168,29 +186,31 @@ void TTempSmooth<pfclip, fp>::filterF(PVideoFrame src[15], PVideoFrame pf[15], P
                 float t1{ pfp[frameIndex][x] };
                 float diff{ std::min(std::abs(c - t1), 1.f) };
 
-                if (diff < thresh)
+                if (diff < thresh_val)
                 {
-                    float weight{ weightSaved[useDiff ? static_cast<int>(diff * 255.f) : frameIndex] };
-                    weights += weight;
-                    sum += srcp[frameIndex][x] * weight;
+                    int dist_from_center_1_based{ _maxr - frameIndex };
+                    int v_offset_base{ 256 * (dist_from_center_1_based - 1) };
+                    float weight{ weightSaved[useDiff ? (static_cast<int>(diff * 255.f) + v_offset_base): frameIndex] };
+                    current_weights += weight;
+                    current_sum += srcp[frameIndex][x] * weight;
 
                     --frameIndex;
-                    int v{ 256 };
 
                     while (frameIndex > fromFrame)
                     {
                         const float t2{ t1 };
                         t1 = pfp[frameIndex][x];
                         diff = std::min(std::abs(c - t1), 1.f);
+                        dist_from_center_1_based = _maxr - frameIndex;
+                        v_offset_base = 256 * (dist_from_center_1_based - 1);
 
-                        if (diff < thresh && std::min(std::abs(t1 - t2), 1.f) < thresh)
+                        if (diff < thresh_val && std::min(std::abs(t1 - t2), 1.f) < thresh_val)
                         {
-                            weight = weightSaved[useDiff ? static_cast<int>(diff * 255.f) + v : frameIndex];
-                            weights += weight;
-                            sum += srcp[frameIndex][x] * weight;
+                            weight = weightSaved[useDiff ? (static_cast<int>(diff * 255.f) + v_offset_base) : frameIndex];
+                            current_weights += weight;
+                            current_sum += srcp[frameIndex][x] * weight;
 
                             --frameIndex;
-                            v += 256;
                         }
                         else
                             break;
@@ -205,29 +225,31 @@ void TTempSmooth<pfclip, fp>::filterF(PVideoFrame src[15], PVideoFrame pf[15], P
                 float t1{ pfp[frameIndex][x] };
                 float diff{ std::min(std::abs(c - t1), 1.f) };
 
-                if (diff < thresh)
+                if (diff < thresh_val)
                 {
-                    float weight{ weightSaved[useDiff ? static_cast<int>(diff * 255.f) : frameIndex] };
-                    weights += weight;
-                    sum += srcp[frameIndex][x] * weight;
+                    int dist_from_center_1_based = frameIndex - _maxr;
+                    int v_offset_base = 256 * (dist_from_center_1_based - 1);
+                    float weight{ weightSaved[useDiff ? (static_cast<int>(diff * 255.f) + v_offset_base): frameIndex] };
+                    current_weights += weight;
+                    current_sum += srcp[frameIndex][x] * weight;
 
                     ++frameIndex;
-                    int v{ 256 };
 
                     while (frameIndex < toFrame)
                     {
                         const float t2{ t1 };
                         t1 = pfp[frameIndex][x];
                         diff = std::min(std::abs(c - t1), 1.f);
+                        dist_from_center_1_based = frameIndex - _maxr;
+                        v_offset_base = 256 * (dist_from_center_1_based - 1);
 
-                        if (diff < thresh && std::min(std::abs(t1 - t2), 1.f) < thresh)
+                        if (diff < thresh_val && std::min(std::abs(t1 - t2), 1.f) < thresh_val)
                         {
-                            weight = weightSaved[useDiff ? static_cast<int>(diff * 255.f) + v : frameIndex];
-                            weights += weight;
-                            sum += srcp[frameIndex][x] * weight;
+                            weight = weightSaved[useDiff ? (static_cast<int>(diff * 255.f) + v_offset_base) : frameIndex];
+                            current_weights += weight;
+                            current_sum += srcp[frameIndex][x] * weight;
 
                             ++frameIndex;
-                            v += 256;
                         }
                         else
                             break;
@@ -235,10 +257,10 @@ void TTempSmooth<pfclip, fp>::filterF(PVideoFrame src[15], PVideoFrame pf[15], P
                 }
             }
 
-            if constexpr (fp)
-                dstp[x] = srcp[_maxr][x] * (1.f - weights) + sum;
+            if constexpr (fp_template_param)
+                dstp[x] = srcp[_maxr][x] * (1.f - current_weights) + current_sum;
             else
-                dstp[x] = sum / weights;
+                dstp[x] = (current_weights == 0.f) ? srcp[_maxr][x] : (current_sum / current_weights);
         }
 
         for (int i{ 0 }; i < _diameter; ++i)
@@ -251,9 +273,9 @@ void TTempSmooth<pfclip, fp>::filterF(PVideoFrame src[15], PVideoFrame pf[15], P
     }
 }
 
-template<bool pfclip, bool fp>
+template<bool pfclip, bool fp_template_param>
 template<typename T>
-void TTempSmooth<pfclip, fp>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane)
+void TTempSmooth<pfclip, fp_template_param>::filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane)
 {
     int src_stride[(MAX_TEMP_RAD * 2 + 1)]{};
     int pf_stride[(MAX_TEMP_RAD * 2 + 1)]{};
@@ -455,8 +477,8 @@ static float ComparePlane(PVideoFrame& src, PVideoFrame& src1, const int bits_pe
     return f;
 }
 
-template <bool pfclip, bool fp>
-TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew, int vpnew, int threads, IScriptEnvironment* env)
+template <bool pfclip, bool fp_template_param>
+TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength, float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew, int vpnew, int threads, IScriptEnvironment* env)
     : GenericVideoFilter(_child), _maxr(maxr), _scthresh(scthresh), _diameter(maxr * 2 + 1), _thresh{ ythresh, uthresh, vthresh }, _mdiff{ ymdiff, umdiff, vmdiff }, _shift(vi.BitsPerComponent() - 8), _threshF{ 0.0f, 0.0f, 0.0f },
     _cw(0.0f), _pfclip(pfclip_), _opt(opt), _pmode(pmode), _thUPD{ ythupd, uthupd, vthupd }, _pnew{ ypnew, upnew, vpnew }, _threads{ threads }
 {
@@ -464,8 +486,16 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
 
     if (vi.IsRGB() || !vi.IsPlanar())
         env->ThrowError("vsTTempSmooth: clip must be Y/YUV(A) 8..32-bit planar format.");
-    if (_maxr < 1 || _maxr > MAX_TEMP_RAD)
-        env->ThrowError("vsTTempSmooth: maxr must be between 1..%d.", MAX_TEMP_RAD);
+    if (_pmode == 0 || _pmode == 2) {
+        if (_maxr < 1 || _maxr > 7)
+            env->ThrowError("vsTTempSmooth: maxr must be between 1..7 for pmode=0 and pmode=2.");
+    }
+    else if (_pmode == 1) {
+        if (_maxr < 1 || _maxr > MAX_TEMP_RAD)
+            env->ThrowError("vsTTempSmooth: maxr must be between 1..%d.", MAX_TEMP_RAD);
+    }
+    else
+        env->ThrowError("vsTTempSmooth: pmode must be 0, 1, or 2.");
     if (ythresh < 1 || ythresh > 256)
         env->ThrowError("vsTTempSmooth: ythresh must be between 1..256.");
     if (uthresh < 1 || uthresh > 256)
@@ -484,8 +514,6 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
         env->ThrowError("vsTTempSmooth: scthresh must be between 0.0..100.0.");
     if (_opt < -1 || _opt > 3)
         env->ThrowError("vsTTempSmooth: opt must be between -1..3.");
-    if (_pmode < 0 || _pmode > 1)
-        env->ThrowError("vsTTempSmooth: pmode must be either 0 or 1.");
     if (ythupd < 0)
         env->ThrowError("vsTTempSmooth: ythupd must be greater than 0.");
     if (uthupd < 0)
@@ -506,14 +534,16 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
     else if (_threads < 0 || _threads > thr)
         env->ThrowError("vsTTempSmooth: threads must be between 0..%s.", std::to_string(thr).c_str());
 
-    const int iset{ instrset_detect() };
+    const bool avx512{ !!(env->GetCPUFlags() & CPUF_AVX512F) && (opt < 0 || opt == 3) };
+    const bool avx2{ !!(env->GetCPUFlags() & CPUF_AVX2) && (opt < 0 || opt == 2) };
+    const bool sse2{ !!(env->GetCPUFlags() & CPUF_SSE2) && (opt < 0 || opt == 1) };
 
-    if (_opt == 1 && iset < 2)
-        env->ThrowError("vsTTempSmooth: opt=1 requires SSE2.");
-    if (_opt == 2 && iset < 8)
-        env->ThrowError("vsTTempSmooth: opt=2 requires AVX2.");
-    if (_opt == 3 && iset < 10)
-        env->ThrowError("vsTTempSmooth: opt=3 requires AVX512F.");
+    if (!avx512 && opt == 3)
+        env->ThrowError("FFTSpectrum: opt=3 requires AVX512.");
+    if (!avx2 && opt == 2)
+        env->ThrowError("FFTSpectrum: opt=2 requires AVX2.");
+    if (!sse2 && opt == 1)
+        env->ThrowError("FFTSpectrum: opt=1 requires SSE2.");
 
     if constexpr (pfclip)
     {
@@ -524,9 +554,9 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
             env->ThrowError("vsTTempSmooth: pfclip's number of frames doesn't match.");
     }
 
-    const int planes[3] = { y, u, v };
-    static constexpr int iMaxSum = std::numeric_limits<int>::max();
-    static constexpr float fMaxSum = std::numeric_limits<float>::max();
+    const int planes[3] { y, u, v };
+    static constexpr int iMaxSum{ std::numeric_limits<int>::max() };
+    static constexpr float fMaxSum{ std::numeric_limits<float>::max() };
 
     for (int i{ 0 }; i < std::min(vi.NumComponents(), 3); ++i)
     {
@@ -540,67 +570,97 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
 
         if (proccesplanes[i] == 3) // not support maxr > 7 ?
         {
-            if (_pmode == 0)
+            if (_pmode == 0 || _pmode == 2)
             {
+                std::vector<float> dt_final_dist_weights(_maxr + 1);
+
+                if (_pmode == 2) {
+                    if (strength <= 1) {
+                        const int k_binom{ 2 * _maxr };
+                        std::vector<int64_t> coeffs{ getPascalRow(k_binom) };
+                        for (int d{ 0 }; d <= _maxr; ++d)
+                            dt_final_dist_weights[d] = static_cast<float>(coeffs[_maxr - d]);
+                    }
+                    else {
+                        const int plateau_edge_dist{ strength - 1 };
+                        if (plateau_edge_dist >= _maxr) {
+                            for (int d{ 0 }; d <= _maxr; ++d)
+                                dt_final_dist_weights[d] = 1.0f;
+                        }
+                        else {
+                            const int num_points_falloff_one_side{ _maxr - plateau_edge_dist + 1 };
+                            const int k_falloff_shape{ 2 * (num_points_falloff_one_side - 1) };
+                            std::vector<int64_t> falloff_coeffs{ getPascalRow(k_falloff_shape) };
+
+                            const float peak_falloff_val{ (k_falloff_shape / 2 < falloff_coeffs.size()) ? static_cast<float>(falloff_coeffs[k_falloff_shape / 2]) : 1.0f };
+
+                            for (int d{ 0 }; d <= _maxr; ++d) {
+                                if (d <= plateau_edge_dist)
+                                    dt_final_dist_weights[d] = peak_falloff_val;
+                                else {
+                                    const int dist_from_falloff_peak{ d - plateau_edge_dist };
+                                    const int coeff_idx{ (k_falloff_shape / 2) - dist_from_falloff_peak };
+                                    if (coeff_idx >= 0 && coeff_idx < falloff_coeffs.size())
+                                        dt_final_dist_weights[d] = static_cast<float>(falloff_coeffs[coeff_idx]);
+                                    else // Should not happen with correct k_falloff_shape
+                                        dt_final_dist_weights[d] = 0.0f; // Safety
+                                }
+                            }
+                        }
+                    }
+                }
+                else {
+                    for (int d{ 0 }; d <= _maxr; ++d) {
+                        if (d < strength)
+                            dt_final_dist_weights[d] = 1.0f;
+                        else
+                            dt_final_dist_weights[d] = 1.0f / (static_cast<float>(d - strength + 2));
+                    }
+                }
+
+                float current_sum_of_dist_weights{ dt_final_dist_weights[0] };
+                for (int d{ 1 }; d <= _maxr; ++d)
+                    current_sum_of_dist_weights += dt_final_dist_weights[d] * 2.0f;
+                if (current_sum_of_dist_weights == 0.0f)
+                    current_sum_of_dist_weights = 1.0f;
+
                 if (_thresh[i] > _mdiff[i] + 1)
                 {
                     _weight[i].resize(256 * _maxr);
-                    float dt[15] = {}, rt[256] = {}, sum = 0.f;
+                    _cw = dt_final_dist_weights[0] / current_sum_of_dist_weights;
 
-                    for (int i{ 0 }; i < strength && i <= _maxr; ++i)
-                        dt[i] = 1.f;
-                    for (int i{ strength }; i <= _maxr; ++i)
-                        dt[i] = 1.f / (i - strength + 2);
-
-                    const float step{ 256.f / (_thresh[i] - std::min(_mdiff[i], _thresh[i] - 1)) };
-                    float base{ 256.f };
+                    float rt[256]{};
+                    const float step_val{ 256.0f / (_thresh[i] - std::min(_mdiff[i], _thresh[i] - 1)) };
+                    float base_val{ 256.0f };
                     for (int j{ 0 }; j < _thresh[i]; ++j)
                     {
                         if (_mdiff[i] > j)
-                        {
                             rt[j] = 256.f;
-                        }
                         else
                         {
-                            if (base > 0.f)
-                                rt[j] = base;
+                            if (base_val > 0.f)
+                                rt[j] = base_val;
                             else
                                 break;
-                            base -= step;
+                            base_val -= step_val;
                         }
                     }
-
-                    sum += dt[0];
                     for (int j{ 1 }; j <= _maxr; ++j)
                     {
-                        sum += dt[j] * 2.f;
+                        const float normalized_dist_w{ dt_final_dist_weights[j] / current_sum_of_dist_weights };
                         for (int v{ 0 }; v < 256; ++v)
-                            _weight[i][256 * (j - 1) + v] = dt[j] * rt[v] / 256.f;
+                            _weight[i][256 * (j - 1) + v] = normalized_dist_w * rt[v] / 256.0f;
                     }
-
-                    for (int j{ 0 }; j < 256 * _maxr; ++j)
-                        _weight[i][j] /= sum;
-
-                    _cw = dt[0] / sum;
                 }
                 else
                 {
                     _weight[i].resize(_diameter);
-                    float dt[15] = {}, sum = 0.f;
-
-                    for (int i{ 0 }; i < strength && i <= _maxr; ++i)
-                        dt[_maxr - i] = dt[_maxr + i] = 1.f;
-                    for (int i{ strength }; i <= _maxr; ++i)
-                        dt[_maxr - i] = dt[_maxr + i] = 1.f / (i - strength + 2);
-
-                    for (int j{ 0 }; j < _diameter; ++j)
-                    {
-                        sum += dt[j];
-                        _weight[i][j] = dt[j];
+                    _weight[i][_maxr] = dt_final_dist_weights[0] / current_sum_of_dist_weights;
+                    for (int d{ 1 }; d <= _maxr; ++d) {
+                        const float norm_w{ dt_final_dist_weights[d] / current_sum_of_dist_weights };
+                        _weight[i][_maxr - d] = norm_w;
+                        _weight[i][_maxr + d] = norm_w;
                     }
-
-                    for (int j{ 0 }; j < _diameter; ++j)
-                        _weight[i][j] /= sum;
 
                     _cw = _weight[i][_maxr];
                 }
@@ -610,21 +670,14 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
             }
             else if (_pmode == 1 && _thUPD[i] > 0)
             {
-                pIIRMem[i].resize(vi.width * vi.height * vi.ComponentSize(), 0);
-
-                pMinSumMem[i].resize(vi.width * vi.height, (vi.ComponentSize() < 4) ? iMaxSum : fMaxSum);
+                const size_t num_elements_minsum{ static_cast<size_t>(vi.width) * vi.height };
+                pIIRMem[i].resize(num_elements_minsum * vi.ComponentSize(), 0);
+                pMinSumMem[i].resize(num_elements_minsum, (vi.ComponentSize() < 4) ? iMaxSum : fMaxSum);
             }
         }
     }
 
-    if ((_opt == -1 && iset >= 10) || _opt == 3)
-        _opt = 3;
-    else if ((_opt == -1 && iset >= 8) || _opt == 2)
-        _opt = 2;
-    else if ((_opt == -1 && iset >= 2) || _opt == 1)
-        _opt = 1;
-    else
-        _opt = 0;
+    _opt = (!avx512) ? (!avx2) ? (!sse2) ? 0 : 1 : 2 : 3;
 
     if (_pmode == 1)
     {
@@ -644,7 +697,7 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
             {
                 compare = ComparePlane_avx512<float>;
                 if (_pmode == 1)
-                    filter_mode2 = &TTempSmooth::filterF_mode2_avx512;
+                    filter_mode2_fn_ptr = &TTempSmooth::filterF_mode2_avx512;
             }
         }
     }
@@ -656,21 +709,21 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
             {
                 compare = ComparePlane_avx2<uint8_t>;
                 if (_pmode == 1)
-                    filter_mode2 = &TTempSmooth::filterI_mode2_avx2<uint8_t>;
+                    filter_mode2_fn_ptr = &TTempSmooth::filterI_mode2_avx2<uint8_t>;
                 break;
             }
             case 2:
             {
                 compare = ComparePlane_avx2<uint16_t>;
                 if (_pmode == 1)
-                    filter_mode2 = &TTempSmooth::filterI_mode2_avx2<uint16_t>;
+                    filter_mode2_fn_ptr = &TTempSmooth::filterI_mode2_avx2<uint16_t>;
                 break;
             }
             default:
             {
                 compare = ComparePlane_avx2<float>;
                 if (_pmode == 1)
-                    filter_mode2 = &TTempSmooth::filterF_mode2_avx2;
+                    filter_mode2_fn_ptr = &TTempSmooth::filterF_mode2_avx2;
             }
         }
     }
@@ -691,21 +744,21 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
             {
                 compare = ComparePlane<uint8_t>;
                 if (_pmode == 1)
-                    filter_mode2 = &TTempSmooth::filter_mode2_C<uint8_t>;
+                    filter_mode2_fn_ptr = &TTempSmooth::filter_mode2_C<uint8_t>;
                 break;
             }
             case 2:
             {
                 compare = ComparePlane<uint16_t>;
                 if (_pmode == 1)
-                    filter_mode2 = &TTempSmooth::filter_mode2_C<uint16_t>;
+                    filter_mode2_fn_ptr = &TTempSmooth::filter_mode2_C<uint16_t>;
                 break;
             }
             default:
             {
                 compare = ComparePlane<float>;
                 if (_pmode == 1)
-                    filter_mode2 = &TTempSmooth::filter_mode2_C<float>;
+                    filter_mode2_fn_ptr = &TTempSmooth::filter_mode2_C<float>;
             }
         }
     }
@@ -718,11 +771,11 @@ TTempSmooth<pfclip, fp>::TTempSmooth(PClip _child, int maxr, int ythresh, int ut
 
 }
 
-template <bool pfclip, bool fp>
-PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironment* env)
+template <bool pfclip, bool fp_template_param>
+PVideoFrame __stdcall TTempSmooth<pfclip, fp_template_param>::GetFrame(int n, IScriptEnvironment* env)
 {
-    PVideoFrame src[MAX_TEMP_RAD * 2 + 1] = {};
-    PVideoFrame pf[MAX_TEMP_RAD * 2 + 1] = {};
+    PVideoFrame src[MAX_TEMP_RAD * 2 + 1] {};
+    PVideoFrame pf[MAX_TEMP_RAD * 2 + 1] {};
 
     for (int i{ n - _maxr }; i <= n + _maxr; ++i)
     {
@@ -761,16 +814,18 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
         }
     }
 
-    constexpr int planes_y[3] = { PLANAR_Y, PLANAR_U, PLANAR_V };
+    constexpr int planes_y[3]{ PLANAR_Y, PLANAR_U, PLANAR_V };
     for (int i{ 0 }; i < std::min(vi.NumComponents(), 3); ++i)
     {
         if (proccesplanes[i] == 3)
         {
             if (_pmode == 1)
             {
-                (this->*filter_mode2)(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
+                (this->*filter_mode2_fn_ptr)(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                 continue;
             }
+
+            const bool use_diff_for_filter{ _thresh[i] > _mdiff[i] + 1 };
 
             if (_opt == 3)
             {
@@ -778,7 +833,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                 {
                     case 1:
                     {
-                        if (_thresh[i] > _mdiff[i] + 1)
+                        if (use_diff_for_filter)
                             TTempSmooth::filterI_avx512<uint8_t, true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
                             TTempSmooth::filterI_avx512<uint8_t, false>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
@@ -786,7 +841,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                     }
                     case 2:
                     {
-                        if (_thresh[i] > _mdiff[i] + 1)
+                        if (use_diff_for_filter)
                             TTempSmooth::filterI_avx512<uint16_t, true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
                             TTempSmooth::filterI_avx512<uint16_t, false>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
@@ -794,7 +849,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                     }
                     default:
                     {
-                        if (_thresh[i] > _mdiff[i] + 1)
+                        if (use_diff_for_filter)
                             TTempSmooth::filterF_avx512<true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
                             TTempSmooth::filterF_avx512<false>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
@@ -807,7 +862,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                 {
                     case 1:
                     {
-                        if (_thresh[i] > _mdiff[i] + 1)
+                        if (use_diff_for_filter)
                             TTempSmooth::filterI_avx2<uint8_t, true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
                             TTempSmooth::filterI_avx2<uint8_t, false>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
@@ -815,7 +870,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                     }
                     case 2:
                     {
-                        if (_thresh[i] > _mdiff[i] + 1)
+                        if (use_diff_for_filter)
                             TTempSmooth::filterI_avx2<uint16_t, true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
                             TTempSmooth::filterI_avx2<uint16_t, false>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
@@ -823,7 +878,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                     }
                     default:
                     {
-                        if (_thresh[i] > _mdiff[i] + 1)
+                        if (use_diff_for_filter)
                             TTempSmooth::filterF_avx2<true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
                             TTempSmooth::filterF_avx2<false>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
@@ -836,7 +891,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                 {
                     case 1:
                     {
-                        if (_thresh[i] > _mdiff[i] + 1)
+                        if (use_diff_for_filter)
                             TTempSmooth::filterI_sse2<uint8_t, true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
                             TTempSmooth::filterI_sse2<uint8_t, false>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
@@ -844,7 +899,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                     }
                     case 2:
                     {
-                        if (_thresh[i] > _mdiff[i] + 1)
+                        if (use_diff_for_filter)
                             TTempSmooth::filterI_sse2<uint16_t, true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
                             TTempSmooth::filterI_sse2<uint16_t, false>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
@@ -852,7 +907,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                     }
                     default:
                     {
-                        if (_thresh[i] > _mdiff[i] + 1)
+                        if (use_diff_for_filter)
                             TTempSmooth::filterF_sse2<true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
                             TTempSmooth::filterF_sse2<false>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
@@ -865,7 +920,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                 {
                     case 1:
                     {
-                        if (_thresh[i] > _mdiff[i] + 1)
+                        if (use_diff_for_filter)
                             TTempSmooth::filterI<uint8_t, true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
                             TTempSmooth::filterI<uint8_t, false>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
@@ -873,7 +928,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                     }
                     case 2:
                     {
-                        if (_thresh[i] > _mdiff[i] + 1)
+                        if (use_diff_for_filter)
                             TTempSmooth::filterI<uint16_t, true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
                             TTempSmooth::filterI<uint16_t, false>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
@@ -881,7 +936,7 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp>::GetFrame(int n, IScriptEnvironmen
                     }
                     default:
                     {
-                        if (_thresh[i] > _mdiff[i] + 1)
+                        if (use_diff_for_filter)
                             TTempSmooth::filterF<true>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
                         else
                             TTempSmooth::filterF<false>(src, (pfclip) ? pf : src, dst, fromFrame, toFrame, planes_y[i]);
@@ -901,11 +956,11 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
     enum { Clip, Maxr, Ythresh, Uthresh, Vthresh, Ymdiff, Umdiff, Vmdiff, Strength, Scthresh, Fp, Y, U, V, Pfclip, Opt, Pmode, YthUPD, UthUPD, VthUPD, Ypnew, Upnew, Vpnew, Threads };
 
     PClip pfclip{ (args[Pfclip].Defined() ? args[Pfclip].AsClip() : nullptr) };
-    const bool fp{ args[Fp].AsBool(true) };
+    const bool fp_script_arg{ args[Fp].AsBool(true) };
 
     if (pfclip)
     {
-        if (fp)
+        if (fp_script_arg)
             return new TTempSmooth<true, true>(
                 args[Clip].AsClip(),
                 args[Maxr].AsInt(3),
@@ -960,7 +1015,7 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
     }
     else
     {
-        if (fp)
+        if (fp_script_arg)
             return new TTempSmooth<false, true>(
                 args[Clip].AsClip(),
                 args[Maxr].AsInt(3),
