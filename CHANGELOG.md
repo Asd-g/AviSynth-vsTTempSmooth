@@ -1,3 +1,6 @@
+##### 1.3.0:
+    Added new pmode.
+
 ##### 1.2.6:
     Fixed undefined behavior when float input (pmode=1, regression from 1.2.5).
 
