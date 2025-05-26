@@ -141,23 +141,17 @@ vsTTempSmooth(clip, int "ythresh", int "uthresh", int "vthresh", int "ymdiff", b
 
 ### Building:
 
-- Windows<br>
-    Use solution files.
+```
+Requirements:
+- Git
+- C++17 compiler
+- CMake >= 3.16
+- Ninja
+```
 
-- Linux
-    ```
-    Requirements:
-        - Git
-        - C++17 compiler
-        - CMake >= 3.16
-        - OpenMP
-    ```
-    ```
-    git clone https://github.com/Asd-g/AviSynth-vsTTempSmooth && \
-    cd AviSynth-vsTTempSmooth && \
-    mkdir build && \
-    cd build && \
-    cmake .. && \
-    make -j$(nproc) && \
-    sudo make install
-    ```
+```
+git clone https://github.com/Asd-g/AviSynth-vsTTempSmooth
+cd AviSynth-vsTTempSmooth
+cmake -B build -G Ninja
+ninja -C build
+```
