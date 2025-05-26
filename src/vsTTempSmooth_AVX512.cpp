@@ -18,7 +18,7 @@ void TTempSmooth<pfclip, fp>::filterI_avx512(
     int src_stride[15]{};
     int pf_stride[15]{};
     const size_t stride{dst->GetPitch(plane) / sizeof(T)};
-    const size_t width{dst->GetRowSize(plane) / sizeof(T)};
+    const int width{static_cast<int>(dst->GetRowSize(plane) / sizeof(T))};
     const int height{dst->GetHeight(plane)};
     const T *srcp[15]{}, *pfp[15]{};
     for (int i{0}; i < _diameter; ++i)
@@ -613,16 +613,16 @@ float ComparePlane_avx512(PVideoFrame& src, PVideoFrame& src1, const int bits_pe
 {
     const size_t pitch{src->GetPitch(PLANAR_Y) / sizeof(T)};
     const size_t pitch2{src1->GetPitch(PLANAR_Y) / sizeof(T)};
-    const size_t width{src->GetRowSize(PLANAR_Y) / sizeof(T)};
+    const int width{static_cast<int>(src->GetRowSize(PLANAR_Y) / sizeof(T))};
     const int height{src->GetHeight(PLANAR_Y)};
     const T* srcp{reinterpret_cast<const T*>(src->GetReadPtr(PLANAR_Y))};
     const T* srcp2{reinterpret_cast<const T*>(src1->GetReadPtr(PLANAR_Y))};
 
     Vec16f accum{0.0f};
 
-    for (size_t y{0}; y < height; ++y)
+    for (int y{0}; y < height; ++y)
     {
-        for (size_t x{0}; x < width; x += 16)
+        for (int x{0}; x < width; x += 16)
         {
             if constexpr (std::is_integral_v<T>)
                 accum += abs(to_float(load<T>(&srcp[x])) - to_float(load<T>(&srcp2[x])));

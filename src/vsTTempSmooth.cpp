@@ -32,7 +32,7 @@ void TTempSmooth<pfclip, fp_template_param>::filterI(
     int src_stride[15]{};
     int pf_stride[15]{};
     const size_t stride{dst->GetPitch(plane) / sizeof(T)};
-    const size_t width{dst->GetRowSize(plane) / sizeof(T)};
+    const int width{static_cast<int>(dst->GetRowSize(plane) / sizeof(T))};
     const int height{dst->GetHeight(plane)};
     const T *srcp[15]{}, *pfp[15]{};
 
@@ -287,7 +287,7 @@ void TTempSmooth<pfclip, fp_template_param>::filter_mode2_C(PVideoFrame src[(MAX
     int src_stride[(MAX_TEMP_RAD * 2 + 1)]{};
     int pf_stride[(MAX_TEMP_RAD * 2 + 1)]{};
     const size_t stride{dst->GetPitch(plane) / sizeof(T)};
-    const size_t width{dst->GetRowSize(plane) / sizeof(T)};
+    const int width{static_cast<int>(dst->GetRowSize(plane) / sizeof(T))};
     const int height{dst->GetHeight(plane)};
     const T *g_srcp[(MAX_TEMP_RAD * 2 + 1)]{}, *g_pfp[(MAX_TEMP_RAD * 2 + 1)]{};
 
@@ -375,7 +375,7 @@ void TTempSmooth<pfclip, fp_template_param>::filter_mode2_C(PVideoFrame src[(MAX
                         col_data_ptr = (T*)&srcp[dmt_col][x];
                     }
 
-                    wt_sum_row += (sizeof(T) <= 2) ? INTABS(*row_data_ptr - *col_data_ptr) : std::abs(*row_data_ptr - *col_data_ptr);
+                    wt_sum_row += (sizeof(T) <= 2) ? std::abs(*row_data_ptr - *col_data_ptr) : std::abs(*row_data_ptr - *col_data_ptr);
                 }
 
                 if (wt_sum_row < wt_sum_minrow)
@@ -404,7 +404,7 @@ void TTempSmooth<pfclip, fp_template_param>::filter_mode2_C(PVideoFrame src[(MAX
             if (thUPD > 0) // IIR here
             {
                 // IIR - check if memory sample is still good
-                working_t idm_mem = (sizeof(T) <= 2) ? INTABS(*best_data_ptr - pMem[x]) : std::abs(*best_data_ptr - pMem[x]);
+                working_t idm_mem = (sizeof(T) <= 2) ? std::abs(*best_data_ptr - pMem[x]) : std::abs(*best_data_ptr - pMem[x]);
 
                 if ((idm_mem < thUPD) && ((wt_sum_minrow + pnew) > pMemSum[x]))
                 {
@@ -423,7 +423,7 @@ void TTempSmooth<pfclip, fp_template_param>::filter_mode2_C(PVideoFrame src[(MAX
             }
 
             // check if best is below thresh-difference from current src
-            if (((sizeof(T) <= 2) ? INTABS(*best_data_ptr - pfp[_maxr][x]) : std::abs(*best_data_ptr - pfp[_maxr][x])) < thresh)
+            if (((sizeof(T) <= 2) ? std::abs(*best_data_ptr - pfp[_maxr][x]) : std::abs(*best_data_ptr - pfp[_maxr][x])) < thresh)
             {
                 dstp[x] = *best_data_ptr;
             }
@@ -546,7 +546,7 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
     if (vpnew < 0)
         env->ThrowError("vsTTempSmooth: vpnew must be greater than 0.");
 
-    const uint32_t thr{std::thread::hardware_concurrency()};
+    const int thr{static_cast<int>(std::thread::hardware_concurrency())};
 
     if (_threads == 0)
         _threads = thr;

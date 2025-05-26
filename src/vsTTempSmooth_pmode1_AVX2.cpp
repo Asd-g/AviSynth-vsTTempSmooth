@@ -65,7 +65,7 @@ void TTempSmooth<pfclip, fp>::filterI_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD *
     int src_stride[(MAX_TEMP_RAD * 2 + 1)]{};
     int pf_stride[(MAX_TEMP_RAD * 2 + 1)]{};
     const size_t stride{dst->GetPitch(plane) / sizeof(T)};
-    const size_t width{dst->GetRowSize(plane) / sizeof(T)};
+    const int width{static_cast<int>(dst->GetRowSize(plane) / sizeof(T))};
     const int height{dst->GetHeight(plane)};
     const T *g_srcp[(MAX_TEMP_RAD * 2 + 1)]{}, *g_pfp[(MAX_TEMP_RAD * 2 + 1)]{};
 

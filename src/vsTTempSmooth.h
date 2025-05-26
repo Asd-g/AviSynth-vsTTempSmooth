@@ -12,12 +12,6 @@
 #define SIMD_AVX512_SPP 64
 #define SIMD_AVX2_SPP 32
 
-[[maybe_unused]]
-static AVS_FORCEINLINE unsigned int INTABS(int x)
-{
-    return (x < 0) ? -x : x;
-}
-
 template<bool pfclip, bool fp_template_param>
 class TTempSmooth : public GenericVideoFilter
 {
