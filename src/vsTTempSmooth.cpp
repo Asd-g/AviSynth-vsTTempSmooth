@@ -482,25 +482,29 @@ static float ComparePlane(PVideoFrame& src, PVideoFrame& src1, const int bits_pe
 template<bool pfclip, bool fp_template_param>
 TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff,
     int vmdiff, int strength, float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd,
-    int ypnew, int upnew, int vpnew, int threads, IScriptEnvironment* env)
+    int ypnew, int upnew, int vpnew, int threads, int radius_past, int radius_future, IScriptEnvironment* env)
     : GenericVideoFilter(_child),
-      _maxr(maxr),
+      _maxr(radius_past == -1 ? maxr : radius_past),
       _scthresh(scthresh),
-      _diameter(maxr * 2 + 1),
+      is_radius_defined(radius_past > -1 && radius_future > -1),
+      _diameter([&]() {
+          if ((radius_past != -1 && radius_future == -1) || (radius_past == -1 && radius_future != -1))
+              env->ThrowError("vsTTempSmooth: radius_past and radius_future must be specified together.");
+          return (is_radius_defined) ? (radius_past + 1 + radius_future) : (maxr * 2 + 1);
+      }()),
       _thresh{ythresh, uthresh, vthresh},
       _mdiff{ymdiff, umdiff, vmdiff},
       _shift(vi.BitsPerComponent() - 8),
       _threshF{0.0f, 0.0f, 0.0f},
       _cw(0.0f),
       _pfclip(pfclip_),
+      has_at_least_v8(env->FunctionExists("propShow")),
       _opt(opt),
       _pmode(pmode),
       _thUPD{ythupd, uthupd, vthupd},
       _pnew{ypnew, upnew, vpnew},
       _threads{threads}
 {
-    has_at_least_v8 = env->FunctionExists("propShow");
-
     if (vi.IsRGB() || !vi.IsPlanar())
         env->ThrowError("vsTTempSmooth: clip must be Y/YUV(A) 8..32-bit planar format.");
     if (_pmode == 0 || _pmode == 2)
@@ -558,11 +562,11 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
     const bool sse2{!!(env->GetCPUFlags() & CPUF_SSE2) && (opt < 0 || opt == 1)};
 
     if (!avx512 && opt == 3)
-        env->ThrowError("FFTSpectrum: opt=3 requires AVX512.");
+        env->ThrowError("vsTTempSmooth: opt=3 requires AVX512.");
     if (!avx2 && opt == 2)
-        env->ThrowError("FFTSpectrum: opt=2 requires AVX2.");
+        env->ThrowError("vsTTempSmooth: opt=2 requires AVX2.");
     if (!sse2 && opt == 1)
-        env->ThrowError("FFTSpectrum: opt=1 requires SSE2.");
+        env->ThrowError("vsTTempSmooth: opt=1 requires SSE2.");
 
     if constexpr (pfclip)
     {
@@ -572,6 +576,15 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
         if (vi.num_frames != vi1.num_frames)
             env->ThrowError("vsTTempSmooth: pfclip's number of frames doesn't match.");
     }
+
+    if (radius_past < -1)
+        env->ThrowError("vsTTempSmooth: radius_past (%d) must be either or higher than -1.", radius_past);
+    if (radius_future < -1)
+        env->ThrowError("vsTTempSmooth: radius_future (%d) must be either or higher than -1.", radius_future);
+    if (!radius_past && !radius_future)
+        env->ThrowError("vsTTempSmooth: both radius_past and radius_future cannot be 0.");
+    if ((_pmode == 1 || _pmode == 2) && is_radius_defined)
+        env->ThrowError("vsTTempSmooth: pmode={%d} doesn't support assymetric width.", _pmode);
 
     const int planes[3]{y, u, v};
     static constexpr int iMaxSum{std::numeric_limits<int>::max()};
@@ -596,30 +609,32 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
 
         if (proccesplanes[i] == 3) // not support maxr > 7 ?
         {
+            const int weight_width{std::max(_maxr, radius_future)};
+
             if (_pmode == 0 || _pmode == 2)
             {
-                std::vector<float> dt_final_dist_weights(_maxr + 1);
+                std::vector<float> dt_final_dist_weights(weight_width + 1);
 
                 if (_pmode == 2)
                 {
                     if (strength <= 1)
                     {
-                        const int k_binom{2 * _maxr};
+                        const int k_binom{2 * weight_width};
                         std::vector<int64_t> coeffs{getPascalRow(k_binom)};
-                        for (int d{0}; d <= _maxr; ++d)
-                            dt_final_dist_weights[d] = static_cast<float>(coeffs[_maxr - d]);
+                        for (int d{0}; d <= weight_width; ++d)
+                            dt_final_dist_weights[d] = static_cast<float>(coeffs[weight_width - d]);
                     }
                     else
                     {
                         const int plateau_edge_dist{strength - 1};
-                        if (plateau_edge_dist >= _maxr)
+                        if (plateau_edge_dist >= weight_width)
                         {
-                            for (int d{0}; d <= _maxr; ++d)
+                            for (int d{0}; d <= weight_width; ++d)
                                 dt_final_dist_weights[d] = 1.0f;
                         }
                         else
                         {
-                            const int num_points_falloff_one_side{_maxr - plateau_edge_dist + 1};
+                            const int num_points_falloff_one_side{weight_width - plateau_edge_dist + 1};
                             const int k_falloff_shape{2 * (num_points_falloff_one_side - 1)};
                             std::vector<int64_t> falloff_coeffs{getPascalRow(k_falloff_shape)};
 
@@ -627,7 +642,7 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
                                                              ? static_cast<float>(falloff_coeffs[k_falloff_shape / 2])
                                                              : 1.0f};
 
-                            for (int d{0}; d <= _maxr; ++d)
+                            for (int d{0}; d <= weight_width; ++d)
                             {
                                 if (d <= plateau_edge_dist)
                                     dt_final_dist_weights[d] = peak_falloff_val;
@@ -646,7 +661,7 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
                 }
                 else
                 {
-                    for (int d{0}; d <= _maxr; ++d)
+                    for (int d{0}; d <= weight_width; ++d)
                     {
                         if (d < strength)
                             dt_final_dist_weights[d] = 1.0f;
@@ -655,15 +670,19 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
                     }
                 }
 
+                const int rad_future{(radius_future == -1) ? _maxr : radius_future};
                 float current_sum_of_dist_weights{dt_final_dist_weights[0]};
                 for (int d{1}; d <= _maxr; ++d)
-                    current_sum_of_dist_weights += dt_final_dist_weights[d] * 2.0f;
+                    current_sum_of_dist_weights += dt_final_dist_weights[d];
+                for (int d{1}; d <= rad_future; ++d)
+                    current_sum_of_dist_weights += dt_final_dist_weights[d];
+
                 if (current_sum_of_dist_weights == 0.0f)
                     current_sum_of_dist_weights = 1.0f;
 
                 if (_thresh[i] > _mdiff[i] + 1)
                 {
-                    _weight[i].resize(256 * _maxr);
+                    _weight[i].resize(256 * weight_width);
                     _cw = dt_final_dist_weights[0] / current_sum_of_dist_weights;
 
                     float rt[256]{};
@@ -682,7 +701,7 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
                             base_val -= step_val;
                         }
                     }
-                    for (int j{1}; j <= _maxr; ++j)
+                    for (int j{1}; j <= weight_width; ++j)
                     {
                         const float normalized_dist_w{dt_final_dist_weights[j] / current_sum_of_dist_weights};
                         for (int v{0}; v < 256; ++v)
@@ -697,6 +716,10 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
                     {
                         const float norm_w{dt_final_dist_weights[d] / current_sum_of_dist_weights};
                         _weight[i][_maxr - d] = norm_w;
+                    }
+                    for (int d{1}; d <= rad_future; ++d)
+                    {
+                        const float norm_w{dt_final_dist_weights[d] / current_sum_of_dist_weights};
                         _weight[i][_maxr + d] = norm_w;
                     }
 
@@ -816,14 +839,14 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp_template_param>::GetFrame(int n, IS
     PVideoFrame src[MAX_TEMP_RAD * 2 + 1]{};
     PVideoFrame pf[MAX_TEMP_RAD * 2 + 1]{};
 
-    for (int i{n - _maxr}; i <= n + _maxr; ++i)
+    for (int i{0}; i < _diameter; ++i)
     {
-        const int frameNumber{std::clamp(i, 0, vi.num_frames - 1)};
+        const int frameNumber{std::clamp(n - _maxr + i, 0, vi.num_frames - 1)};
 
-        src[i - n + _maxr] = child->GetFrame(frameNumber, env);
+        src[i] = child->GetFrame(frameNumber, env);
 
         if constexpr (pfclip)
-            pf[i - n + _maxr] = _pfclip->GetFrame(frameNumber, env);
+            pf[i] = _pfclip->GetFrame(frameNumber, env);
     }
 
     PVideoFrame dst{(has_at_least_v8) ? env->NewVideoFrameP(vi, &src[_maxr]) : env->NewVideoFrame(vi)};
@@ -1006,7 +1029,9 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
         Ypnew,
         Upnew,
         Vpnew,
-        Threads
+        Threads,
+        Radius_past,
+        Radius_future
     };
 
     PClip pfclip{(args[Pfclip].Defined() ? args[Pfclip].AsClip() : nullptr)};
@@ -1019,13 +1044,15 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Vthresh].AsInt(5), args[Ymdiff].AsInt(2), args[Umdiff].AsInt(3), args[Vmdiff].AsInt(3), args[Strength].AsInt(2),
                 args[Scthresh].AsFloatf(12), args[Y].AsInt(3), args[U].AsInt(3), args[V].AsInt(3), pfclip, args[Opt].AsInt(-1),
                 args[Pmode].AsInt(0), args[YthUPD].AsInt(0), args[UthUPD].AsInt(0), args[VthUPD].AsInt(0), args[Ypnew].AsInt(0),
-                args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), env);
+                args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), args[Radius_past].AsInt(-1),
+                args[Radius_future].AsInt(-1), env);
         else
             return new TTempSmooth<true, false>(args[Clip].AsClip(), args[Maxr].AsInt(3), args[Ythresh].AsInt(4), args[Uthresh].AsInt(5),
                 args[Vthresh].AsInt(5), args[Ymdiff].AsInt(2), args[Umdiff].AsInt(3), args[Vmdiff].AsInt(3), args[Strength].AsInt(2),
                 args[Scthresh].AsFloatf(12), args[Y].AsInt(3), args[U].AsInt(3), args[V].AsInt(3), pfclip, args[Opt].AsInt(-1),
                 args[Pmode].AsInt(0), args[YthUPD].AsInt(0), args[UthUPD].AsInt(0), args[VthUPD].AsInt(0), args[Ypnew].AsInt(0),
-                args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), env);
+                args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), args[Radius_past].AsInt(-1),
+                args[Radius_future].AsInt(-1), env);
     }
     else
     {
@@ -1034,13 +1061,15 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Vthresh].AsInt(5), args[Ymdiff].AsInt(2), args[Umdiff].AsInt(3), args[Vmdiff].AsInt(3), args[Strength].AsInt(2),
                 args[Scthresh].AsFloatf(12), args[Y].AsInt(3), args[U].AsInt(3), args[V].AsInt(3), pfclip, args[Opt].AsInt(-1),
                 args[Pmode].AsInt(0), args[YthUPD].AsInt(0), args[UthUPD].AsInt(0), args[VthUPD].AsInt(0), args[Ypnew].AsInt(0),
-                args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), env);
+                args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), args[Radius_past].AsInt(-1),
+                args[Radius_future].AsInt(-1), env);
         else
             return new TTempSmooth<false, false>(args[Clip].AsClip(), args[Maxr].AsInt(3), args[Ythresh].AsInt(4), args[Uthresh].AsInt(5),
                 args[Vthresh].AsInt(5), args[Ymdiff].AsInt(2), args[Umdiff].AsInt(3), args[Vmdiff].AsInt(3), args[Strength].AsInt(2),
                 args[Scthresh].AsFloatf(12), args[Y].AsInt(3), args[U].AsInt(3), args[V].AsInt(3), pfclip, args[Opt].AsInt(-1),
                 args[Pmode].AsInt(0), args[YthUPD].AsInt(0), args[UthUPD].AsInt(0), args[VthUPD].AsInt(0), args[Ypnew].AsInt(0),
-                args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), env);
+                args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), args[Radius_past].AsInt(-1),
+                args[Radius_future].AsInt(-1), env);
     }
 }
 
@@ -1051,8 +1080,9 @@ extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit3(IScri
     AVS_linkage = vectors;
 
     env->AddFunction("vsTTempSmooth",
-        "c[maxr]i[ythresh]i[uthresh]i[vthresh]i[ymdiff]i[umdiff]i[vmdiff]i[strength]i[scthresh]f[fp]b[y]i[u]i[v]i[pfclip]c[opt]i[pmode]i["
-        "ythupd]i[uthupd]i[vthupd]i[ypnew]i[upnew]i[vpnew]i[threads]i",
+        "c[maxr]i[ythresh]i[uthresh]i[vthresh]i[ymdiff]i[umdiff]i[vmdiff]i[strength]i[scthresh]f[fp]b[y]i[u]i[v]i[pfclip]c[opt]i[pmode]"
+        "i["
+        "ythupd]i[uthupd]i[vthupd]i[ypnew]i[upnew]i[vpnew]i[threads]i[radius_past]i[radius_future]i",
         Create_TTempSmooth, 0);
     return "vsTTempSmooth";
 }

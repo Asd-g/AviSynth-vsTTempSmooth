@@ -17,6 +17,7 @@ class TTempSmooth : public GenericVideoFilter
 {
     int _maxr;
     float _scthresh;
+    bool is_radius_defined;
     int _diameter;
     int _thresh[3];
     int _mdiff[3];
@@ -91,7 +92,7 @@ class TTempSmooth : public GenericVideoFilter
 public:
     TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength,
         float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew,
-        int vpnew, int threads, IScriptEnvironment* env);
+        int vpnew, int threads, int radius_past, int radius_future, IScriptEnvironment* env);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
     int __stdcall SetCacheHints(int cachehints, int frame_range) override
     {
