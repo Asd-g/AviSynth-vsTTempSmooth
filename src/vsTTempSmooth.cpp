@@ -509,12 +509,12 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
         env->ThrowError("vsTTempSmooth: clip must be Y/YUV(A) 8..32-bit planar format.");
     if (_pmode == 0 || _pmode == 2)
     {
-        if (_maxr < 1 || _maxr > 7)
+        if (!is_radius_defined && (_maxr < 1 || _maxr > 7))
             env->ThrowError("vsTTempSmooth: maxr must be between 1..7 for pmode=0 and pmode=2.");
     }
     else if (_pmode == 1)
     {
-        if (_maxr < 1 || _maxr > MAX_TEMP_RAD)
+        if (!is_radius_defined && (_maxr < 1 || _maxr > MAX_TEMP_RAD))
             env->ThrowError("vsTTempSmooth: maxr must be between 1..%d.", MAX_TEMP_RAD);
     }
     else
@@ -577,10 +577,10 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
             env->ThrowError("vsTTempSmooth: pfclip's number of frames doesn't match.");
     }
 
-    if (radius_past < -1)
-        env->ThrowError("vsTTempSmooth: radius_past (%d) must be either or higher than -1.", radius_past);
-    if (radius_future < -1)
-        env->ThrowError("vsTTempSmooth: radius_future (%d) must be either or higher than -1.", radius_future);
+    if (radius_past < -1 || radius_past > 7)
+        env->ThrowError("vsTTempSmooth: radius_past must be between -1..7.");
+    if (radius_future < -1 || radius_future > 7)
+        env->ThrowError("vsTTempSmooth: radius_future must be between -1..7.");
     if (!radius_past && !radius_future)
         env->ThrowError("vsTTempSmooth: both radius_past and radius_future cannot be 0.");
     if ((_pmode == 1 || _pmode == 2) && is_radius_defined)
