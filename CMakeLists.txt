@@ -6,7 +6,7 @@ if(NOT CMAKE_GENERATOR MATCHES "Visual Studio")
     endif()
 endif()
 
-project(vsTTempSmooth VERSION 1.3.0 LANGUAGES CXX)
+project(vsTTempSmooth VERSION 1.4.0 LANGUAGES CXX)
 
 add_library(${PROJECT_NAME} SHARED)
 

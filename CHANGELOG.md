@@ -1,3 +1,6 @@
+##### 1.4.0:
+    Added parameters radius_past, radius_future.
+
 ##### 1.3.0:
     Added new pmode.
 
