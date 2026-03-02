@@ -441,6 +441,297 @@ void TTempSmooth<pfclip, fp_template_param>::filter_mode2_C(PVideoFrame src[(MAX
 #endif
 }
 
+template<bool pfclip, bool fp_template_param>
+template<typename T>
+void TTempSmooth<pfclip, fp_template_param>::filter_mode2_3planes_C(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)],
+    PVideoFrame& dst, const int fromFrame, const int toFrame)
+{
+    int src_stride0[(MAX_TEMP_RAD * 2 + 1)]{};
+    int pf_stride0[(MAX_TEMP_RAD * 2 + 1)]{};
+    int src_stride1[(MAX_TEMP_RAD * 2 + 1)]{};
+    int pf_stride1[(MAX_TEMP_RAD * 2 + 1)]{};
+    int src_stride2[(MAX_TEMP_RAD * 2 + 1)]{};
+    int pf_stride2[(MAX_TEMP_RAD * 2 + 1)]{};
+    const T* g_srcp0[(MAX_TEMP_RAD * 2 + 1)]{}, * g_pfp0[(MAX_TEMP_RAD * 2 + 1)]{};
+    const T* g_srcp1[(MAX_TEMP_RAD * 2 + 1)]{}, * g_pfp1[(MAX_TEMP_RAD * 2 + 1)]{};
+    const T* g_srcp2[(MAX_TEMP_RAD * 2 + 1)]{}, * g_pfp2[(MAX_TEMP_RAD * 2 + 1)]{};
+
+    typedef typename std::conditional<sizeof(T) <= 2, int, float>::type working_t;
+
+    const working_t thresh0 = (sizeof(T) <= 2) ? (_thresh[0] << _shift) : (_thresh[0] / 256.0f);
+    const working_t thresh1 = (sizeof(T) <= 2) ? (_thresh[1] << _shift) : (_thresh[1] / 256.0f);
+    const working_t thresh2 = (sizeof(T) <= 2) ? (_thresh[2] << _shift) : (_thresh[2] / 256.0f);
+
+    const working_t thUPD0 = (sizeof(T) <= 2) ? (_thUPD[0] << _shift) : (_thUPD[0] / 256.0f);
+    const working_t thUPD1 = (sizeof(T) <= 2) ? (_thUPD[1] << _shift) : (_thUPD[1] / 256.0f);
+    const working_t thUPD2 = (sizeof(T) <= 2) ? (_thUPD[2] << _shift) : (_thUPD[2] / 256.0f);
+    const working_t pnew0 = (sizeof(T) <= 2) ? (_pnew[0] << _shift) : (_pnew[0] / 256.0f);
+    const working_t pnew1 = (sizeof(T) <= 2) ? (_pnew[1] << _shift) : (_pnew[1] / 256.0f);
+    const working_t pnew2= (sizeof(T) <= 2) ? (_pnew[2] << _shift) : (_pnew[2] / 256.0f);
+    T* g_pMem0{ reinterpret_cast<T*>(pIIRMem[0].data()) };
+    T* g_pMem1{ reinterpret_cast<T*>(pIIRMem[1].data()) };
+    T* g_pMem2{ reinterpret_cast<T*>(pIIRMem[2].data()) };
+
+    working_t* g_pMemSum0{ reinterpret_cast<working_t*>(pMinSumMem[0].data()) };
+    working_t* g_pMemSum1{ reinterpret_cast<working_t*>(pMinSumMem[1].data()) };
+    working_t* g_pMemSum2{ reinterpret_cast<working_t*>(pMinSumMem[2].data()) };
+    const working_t MaxSumDM = (sizeof(T) < 2) ? 255 * (_maxr * 2 + 1) * 3 : 65535 * (_maxr * 2 + 1) * 3; // 65535 is enough max for float too, 3 planes
+
+    for (int i{ 0 }; i < _diameter; ++i)
+    {
+        src_stride0[i] = src[i]->GetPitch(PLANAR_Y) / sizeof(T);
+        src_stride1[i] = src[i]->GetPitch(PLANAR_U) / sizeof(T);
+        src_stride2[i] = src[i]->GetPitch(PLANAR_V) / sizeof(T);
+        pf_stride0[i] = pf[i]->GetPitch(PLANAR_Y) / sizeof(T);
+        pf_stride1[i] = pf[i]->GetPitch(PLANAR_U) / sizeof(T);
+        pf_stride2[i] = pf[i]->GetPitch(PLANAR_V) / sizeof(T);
+        g_srcp0[i] = reinterpret_cast<const T*>(src[i]->GetReadPtr(PLANAR_Y));
+        g_srcp1[i] = reinterpret_cast<const T*>(src[i]->GetReadPtr(PLANAR_U));
+        g_srcp2[i] = reinterpret_cast<const T*>(src[i]->GetReadPtr(PLANAR_V));
+        g_pfp0[i] = reinterpret_cast<const T*>(pf[i]->GetReadPtr(PLANAR_Y));
+        g_pfp1[i] = reinterpret_cast<const T*>(pf[i]->GetReadPtr(PLANAR_U));
+        g_pfp2[i] = reinterpret_cast<const T*>(pf[i]->GetReadPtr(PLANAR_V));
+    }
+
+    T* g_dstp0{ reinterpret_cast<T*>(dst->GetWritePtr(PLANAR_Y)) };
+    T* g_dstp1{ reinterpret_cast<T*>(dst->GetWritePtr(PLANAR_U)) };
+    T* g_dstp2{ reinterpret_cast<T*>(dst->GetWritePtr(PLANAR_V)) };
+    const size_t stride0{ dst->GetPitch(PLANAR_Y) / sizeof(T) };
+    const size_t stride1{ dst->GetPitch(PLANAR_U) / sizeof(T) };
+    const size_t stride2{ dst->GetPitch(PLANAR_V) / sizeof(T) };
+    const int width{ static_cast<int>(dst->GetRowSize(PLANAR_Y) / sizeof(T)) }; // only support 4:4:4 for this version !
+    const int height{ dst->GetHeight(PLANAR_Y) };
+
+
+#ifdef _DEBUG
+    iMEL_non_current_samples = 0;
+    iMEL_mem_hits = 0;
+#endif
+
+#pragma omp parallel for num_threads(_threads)
+    for (int y = 0; y < height; ++y)
+    {
+        // local threads ptrs
+        const T* srcp0[(MAX_TEMP_RAD * 2 + 1)]{}, * pfp0[(MAX_TEMP_RAD * 2 + 1)]{};
+        const T* srcp1[(MAX_TEMP_RAD * 2 + 1)]{}, * pfp1[(MAX_TEMP_RAD * 2 + 1)]{};
+        const T* srcp2[(MAX_TEMP_RAD * 2 + 1)]{}, * pfp2[(MAX_TEMP_RAD * 2 + 1)]{};
+        T* dstp0, * pMem0;
+        T* dstp1, * pMem1;
+        T* dstp2, * pMem2;
+        working_t* pMemSum0;
+        working_t* pMemSum1;
+        working_t* pMemSum2;
+
+        for (int i{ 0 }; i < _diameter; ++i)
+        {
+            srcp0[i] = g_srcp0[i] + y * src_stride0[i];
+            srcp1[i] = g_srcp1[i] + y * src_stride1[i];
+            srcp2[i] = g_srcp2[i] + y * src_stride2[i];
+            pfp0[i] = g_pfp0[i] + y * pf_stride0[i];
+            pfp1[i] = g_pfp1[i] + y * pf_stride1[i];
+            pfp2[i] = g_pfp2[i] + y * pf_stride2[i];
+        }
+
+        dstp0 = g_dstp0 + y * stride0;
+        dstp1 = g_dstp1 + y * stride1;
+        dstp2 = g_dstp2 + y * stride2;
+        pMem0 = g_pMem0 + y * width;
+        pMem1 = g_pMem1 + y * width;
+        pMem2 = g_pMem2 + y * width;
+        pMemSum0 = g_pMemSum0 + y * width;
+        pMemSum1 = g_pMemSum1 + y * width;
+        pMemSum2 = g_pMemSum2 + y * width;
+
+        for (int x{ 0 }; x < width; ++x)
+        {
+
+            // find lowest sum of row in DM_table and index of row in single DM scan with DM calc
+            // use sum of all 3 planes of colour format
+            working_t wt_sum_minrow = MaxSumDM;
+            int i_idx_minrow = 0;
+
+            for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
+            {
+                working_t wt_sum_row = 0;
+                for (int dmt_col = 0; dmt_col < (_maxr * 2 + 1); dmt_col++)
+                {
+                    if (dmt_row == dmt_col)
+                    { // block with itself => DM=0
+                        continue;
+                    }
+
+                    // _maxr is current sample, 0,1,2... is -maxr, ... +maxr
+                    T* row_data0_ptr;
+                    T* col_data0_ptr;
+                    T* row_data1_ptr;
+                    T* col_data1_ptr;
+                    T* row_data2_ptr;
+                    T* col_data2_ptr;
+
+                    if (dmt_row == _maxr) // src sample
+                    {
+                        row_data0_ptr = (T*)&pfp0[_maxr][x];
+                        row_data1_ptr = (T*)&pfp1[_maxr][x];
+                        row_data2_ptr = (T*)&pfp2[_maxr][x];
+                    }
+                    else // ref block
+                    {
+                        row_data0_ptr = (T*)&srcp0[dmt_row][x];
+                        row_data1_ptr = (T*)&srcp1[dmt_row][x];
+                        row_data2_ptr = (T*)&srcp2[dmt_row][x];
+                    }
+
+                    if (dmt_col == _maxr) // src sample
+                    {
+                        col_data0_ptr = (T*)&pfp0[_maxr][x];
+                        col_data1_ptr = (T*)&pfp1[_maxr][x];
+                        col_data2_ptr = (T*)&pfp2[_maxr][x];
+                    }
+                    else // ref block
+                    {
+                        col_data0_ptr = (T*)&srcp0[dmt_col][x];
+                        col_data1_ptr = (T*)&srcp1[dmt_col][x];
+                        col_data2_ptr = (T*)&srcp2[dmt_col][x];
+                    }
+
+                    wt_sum_row += (sizeof(T) <= 2) ? std::abs(*row_data0_ptr - *col_data0_ptr) : std::abs(*row_data0_ptr - *col_data0_ptr); // why std::abs equal now for all types ?
+                    wt_sum_row += (sizeof(T) <= 2) ? std::abs(*row_data1_ptr - *col_data1_ptr) : std::abs(*row_data1_ptr - *col_data1_ptr);
+                    wt_sum_row += (sizeof(T) <= 2) ? std::abs(*row_data2_ptr - *col_data2_ptr) : std::abs(*row_data2_ptr - *col_data2_ptr);
+                }
+
+                if (wt_sum_row < wt_sum_minrow)
+                {
+                    wt_sum_minrow = wt_sum_row;
+                    i_idx_minrow = dmt_row;
+                }
+            }
+
+            // set block of idx_minrow as output block
+            const T* best_data0_ptr;
+            const T* best_data1_ptr;
+            const T* best_data2_ptr;
+
+            if (i_idx_minrow == _maxr) // src sample
+            {
+                best_data0_ptr = &pfp0[_maxr][x];
+                best_data1_ptr = &pfp1[_maxr][x];
+                best_data2_ptr = &pfp2[_maxr][x];
+            }
+            else // ref sample
+            {
+                best_data0_ptr = &srcp0[i_idx_minrow][x];
+                best_data1_ptr = &srcp1[i_idx_minrow][x];
+                best_data2_ptr = &srcp2[i_idx_minrow][x];
+
+#ifdef _DEBUG
+                iMEL_non_current_samples++;
+#endif
+            }
+
+            // plane 0
+            if (thUPD0 > 0) // IIR here
+            {
+                // IIR - check if memory sample is still good
+                working_t idm_mem0 = (sizeof(T) <= 2) ? std::abs(*best_data0_ptr - pMem0[x]) : std::abs(*best_data0_ptr - pMem0[x]);
+
+                if ((idm_mem0 < thUPD0) && ((wt_sum_minrow + pnew0) > pMemSum0[x])) // single MemSum for all 3 planes now
+                {
+                    // mem still good - output mem block
+                    best_data0_ptr = &pMem0[x];
+
+#ifdef _DEBUG
+                    iMEL_mem_hits++;
+#endif
+                }
+                else // mem no good - update mem
+                {
+                    pMem0[x] = *best_data0_ptr;
+                    pMemSum0[x] = wt_sum_minrow;
+                }
+            }
+
+            // plane 1 
+            if (thUPD1 > 0) // IIR here
+            {
+                working_t idm_mem1 = (sizeof(T) <= 2) ? std::abs(*best_data1_ptr - pMem1[x]) : std::abs(*best_data1_ptr - pMem1[x]);
+
+                if ((idm_mem1 < thUPD1) && ((wt_sum_minrow + pnew1) > pMemSum0[x])) // single MemSum for all 3 planes now
+                {
+                    // mem still good - output mem block
+                    best_data1_ptr = &pMem1[x];
+#ifdef _DEBUG
+                    iMEL_mem_hits++;
+#endif
+                }
+                else // mem no good - update mem
+                {
+                    pMem1[x] = *best_data1_ptr;
+                    pMemSum0[x] = wt_sum_minrow;
+                }
+            }
+
+            // plane 2 
+            if (thUPD2 > 0) // IIR here
+            {
+                working_t idm_mem2 = (sizeof(T) <= 2) ? std::abs(*best_data2_ptr - pMem2[x]) : std::abs(*best_data2_ptr - pMem2[x]);
+
+                if ((idm_mem2 < thUPD2) && ((wt_sum_minrow + pnew2) > pMemSum0[x])) // single MemSum for all 3 planes now
+                {
+                    // mem still good - output mem block
+                    best_data2_ptr = &pMem2[x];
+#ifdef _DEBUG
+                    iMEL_mem_hits++;
+#endif
+                }
+                else // mem no good - update mem
+                {
+                    pMem2[x] = *best_data2_ptr;
+                    pMemSum0[x] = wt_sum_minrow;
+                }
+            }
+
+            // check if best is below thresh-difference from current src
+            // plane 0
+            if (((sizeof(T) <= 2) ? std::abs(*best_data0_ptr - pfp0[_maxr][x]) : std::abs(*best_data0_ptr - pfp0[_maxr][x])) < thresh0)
+            {
+                dstp0[x] = *best_data0_ptr;
+            }
+            else
+            {
+                dstp0[x] = pfp0[_maxr][x];
+            }
+
+            // plane 1
+            if (((sizeof(T) <= 2) ? std::abs(*best_data1_ptr - pfp1[_maxr][x]) : std::abs(*best_data1_ptr - pfp1[_maxr][x])) < thresh1)
+            {
+                dstp1[x] = *best_data1_ptr;
+            }
+            else
+            {
+                dstp1[x] = pfp1[_maxr][x];
+            }
+
+            // plane 2
+            if (((sizeof(T) <= 2) ? std::abs(*best_data2_ptr - pfp2[_maxr][x]) : std::abs(*best_data2_ptr - pfp2[_maxr][x])) < thresh2)
+            {
+                dstp2[x] = *best_data2_ptr;
+            }
+            else
+            {
+                dstp2[x] = pfp2[_maxr][x];
+            }
+        }
+    }
+
+#ifdef _DEBUG
+    float fRatioMEL_non_current_samples = (float)iMEL_non_current_samples / (float)(width * height);
+    float fRatioMEL_mem_samples = (float)iMEL_mem_hits / (float)(width * height);
+    int idbr = 0;
+#endif
+}
+
+
+
 template<typename pixel_t>
 AVS_FORCEINLINE static float get_sad_c(
     const pixel_t* c_plane, const pixel_t* t_plane, size_t height, size_t width, size_t c_pitch, size_t t_pitch) noexcept
@@ -482,7 +773,7 @@ static float ComparePlane(PVideoFrame& src, PVideoFrame& src1, const int bits_pe
 template<bool pfclip, bool fp_template_param>
 TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff,
     int vmdiff, int strength, float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd,
-    int ypnew, int upnew, int vpnew, int threads, int radius_past, int radius_future, IScriptEnvironment* env)
+    int ypnew, int upnew, int vpnew, int threads, int radius_past, int radius_future, bool combine_planes, IScriptEnvironment* env)
     : GenericVideoFilter(_child),
       _maxr(radius_past == -1 ? maxr : radius_past),
       _scthresh(scthresh),
@@ -503,7 +794,8 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
       _pmode(pmode),
       _thUPD{ythupd, uthupd, vthupd},
       _pnew{ypnew, upnew, vpnew},
-      _threads{threads}
+      _threads{threads},
+      _combine_planes{combine_planes}
 {
     if (vi.IsRGB() || !vi.IsPlanar())
         env->ThrowError("vsTTempSmooth: clip must be Y/YUV(A) 8..32-bit planar format.");
@@ -585,6 +877,16 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
         env->ThrowError("vsTTempSmooth: both radius_past and radius_future cannot be 0.");
     if ((_pmode == 1 || _pmode == 2) && is_radius_defined)
         env->ThrowError("vsTTempSmooth: pmode={%d} doesn't support assymetric width.", _pmode);
+
+    if (_combine_planes)
+    {
+        if (!vi.Is444())
+            env->ThrowError("vsTTempSmooth: combine_planes only supported for 4:4:4 formats in this version");
+        if(opt != 0)
+            env->ThrowError("vsTTempSmooth: combine_planes only supported with opt=0 in this version");
+        if(vi.NumComponents() != 3)
+            env->ThrowError("vsTTempSmooth: Number of planes must be 3 for combine_planes=true");
+    }
 
     const int planes[3]{y, u, v};
     static constexpr int iMaxSum{std::numeric_limits<int>::max()};
@@ -809,19 +1111,28 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
         case 1: {
             compare = ComparePlane<uint8_t>;
             if (_pmode == 1)
+            {
                 filter_mode2_fn_ptr = &TTempSmooth::filter_mode2_C<uint8_t>;
+                filter_mode2_3planes_fn_ptr = &TTempSmooth::filter_mode2_3planes_C<uint8_t>;
+            }
             break;
         }
         case 2: {
             compare = ComparePlane<uint16_t>;
             if (_pmode == 1)
+            {
                 filter_mode2_fn_ptr = &TTempSmooth::filter_mode2_C<uint16_t>;
+                filter_mode2_3planes_fn_ptr = &TTempSmooth::filter_mode2_3planes_C<uint16_t>;
+            }
             break;
         }
         default: {
             compare = ComparePlane<float>;
             if (_pmode == 1)
+            {
                 filter_mode2_fn_ptr = &TTempSmooth::filter_mode2_C<float>;
+                filter_mode2_3planes_fn_ptr = &TTempSmooth::filter_mode2_3planes_C<float>;
+            }
         }
         }
     }
@@ -874,6 +1185,13 @@ PVideoFrame __stdcall TTempSmooth<pfclip, fp_template_param>::GetFrame(int n, IS
                 break;
             }
         }
+    }
+
+    // combine_planes=true with pmode=1
+    if (_combine_planes && _pmode == 1)
+    {
+        (this->*filter_mode2_3planes_fn_ptr)(src, (pfclip) ? pf : src, dst, fromFrame, toFrame); // TODO: processplanes[] may be integrated for 3 (process) and 2 (copy) at the end of function
+        return dst;
     }
 
     constexpr int planes_y[3]{PLANAR_Y, PLANAR_U, PLANAR_V};
@@ -1031,7 +1349,8 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
         Vpnew,
         Threads,
         Radius_past,
-        Radius_future
+        Radius_future,
+        Combine_planes
     };
 
     PClip pfclip{(args[Pfclip].Defined() ? args[Pfclip].AsClip() : nullptr)};
@@ -1045,14 +1364,14 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Scthresh].AsFloatf(12), args[Y].AsInt(3), args[U].AsInt(3), args[V].AsInt(3), pfclip, args[Opt].AsInt(-1),
                 args[Pmode].AsInt(0), args[YthUPD].AsInt(0), args[UthUPD].AsInt(0), args[VthUPD].AsInt(0), args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), args[Radius_past].AsInt(-1),
-                args[Radius_future].AsInt(-1), env);
+                args[Radius_future].AsInt(-1), args[Combine_planes].AsBool(false), env);
         else
             return new TTempSmooth<true, false>(args[Clip].AsClip(), args[Maxr].AsInt(3), args[Ythresh].AsInt(4), args[Uthresh].AsInt(5),
                 args[Vthresh].AsInt(5), args[Ymdiff].AsInt(2), args[Umdiff].AsInt(3), args[Vmdiff].AsInt(3), args[Strength].AsInt(2),
                 args[Scthresh].AsFloatf(12), args[Y].AsInt(3), args[U].AsInt(3), args[V].AsInt(3), pfclip, args[Opt].AsInt(-1),
                 args[Pmode].AsInt(0), args[YthUPD].AsInt(0), args[UthUPD].AsInt(0), args[VthUPD].AsInt(0), args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), args[Radius_past].AsInt(-1),
-                args[Radius_future].AsInt(-1), env);
+                args[Radius_future].AsInt(-1), args[Combine_planes].AsBool(false), env);
     }
     else
     {
@@ -1062,14 +1381,14 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Scthresh].AsFloatf(12), args[Y].AsInt(3), args[U].AsInt(3), args[V].AsInt(3), pfclip, args[Opt].AsInt(-1),
                 args[Pmode].AsInt(0), args[YthUPD].AsInt(0), args[UthUPD].AsInt(0), args[VthUPD].AsInt(0), args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), args[Radius_past].AsInt(-1),
-                args[Radius_future].AsInt(-1), env);
+                args[Radius_future].AsInt(-1), args[Combine_planes].AsBool(false), env);
         else
             return new TTempSmooth<false, false>(args[Clip].AsClip(), args[Maxr].AsInt(3), args[Ythresh].AsInt(4), args[Uthresh].AsInt(5),
                 args[Vthresh].AsInt(5), args[Ymdiff].AsInt(2), args[Umdiff].AsInt(3), args[Vmdiff].AsInt(3), args[Strength].AsInt(2),
                 args[Scthresh].AsFloatf(12), args[Y].AsInt(3), args[U].AsInt(3), args[V].AsInt(3), pfclip, args[Opt].AsInt(-1),
                 args[Pmode].AsInt(0), args[YthUPD].AsInt(0), args[UthUPD].AsInt(0), args[VthUPD].AsInt(0), args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), args[Radius_past].AsInt(-1),
-                args[Radius_future].AsInt(-1), env);
+                args[Radius_future].AsInt(-1), args[Combine_planes].AsBool(false), env);
     }
 }
 
@@ -1082,7 +1401,7 @@ extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit3(IScri
     env->AddFunction("vsTTempSmooth",
         "c[maxr]i[ythresh]i[uthresh]i[vthresh]i[ymdiff]i[umdiff]i[vmdiff]i[strength]i[scthresh]f[fp]b[y]i[u]i[v]i[pfclip]c[opt]i[pmode]"
         "i["
-        "ythupd]i[uthupd]i[vthupd]i[ypnew]i[upnew]i[vpnew]i[threads]i[radius_past]i[radius_future]i",
+        "ythupd]i[uthupd]i[vthupd]i[ypnew]i[upnew]i[vpnew]i[threads]i[radius_past]i[radius_future]i[combine_planes]b",
         Create_TTempSmooth, 0);
     return "vsTTempSmooth";
 }
