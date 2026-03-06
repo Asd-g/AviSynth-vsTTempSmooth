@@ -343,6 +343,9 @@ void TTempSmooth<pfclip, fp_template_param>::filter_mode2_C(PVideoFrame src[(MAX
             working_t wt_sum_minrow = MaxSumDM;
             int i_idx_minrow = 0;
 
+            // for mean sum of rows except current
+            working_t wt_sum_dm_others = 0;
+
             for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
             {
                 working_t wt_sum_row = 0;
@@ -375,7 +378,11 @@ void TTempSmooth<pfclip, fp_template_param>::filter_mode2_C(PVideoFrame src[(MAX
                         col_data_ptr = (T*)&srcp[dmt_col][x];
                     }
 
-                    wt_sum_row += (sizeof(T) <= 2) ? std::abs(*row_data_ptr - *col_data_ptr) : std::abs(*row_data_ptr - *col_data_ptr);
+                    working_t wt_dm = (sizeof(T) <= 2) ? std::abs(*row_data_ptr - *col_data_ptr) : std::abs(*row_data_ptr - *col_data_ptr);
+                    wt_sum_row += wt_dm;
+
+                    if ((dmt_row != _maxr) && (dmt_col != _maxr)) wt_sum_dm_others += wt_dm;
+
                 }
 
                 if (wt_sum_row < wt_sum_minrow)
@@ -383,6 +390,15 @@ void TTempSmooth<pfclip, fp_template_param>::filter_mode2_C(PVideoFrame src[(MAX
                     wt_sum_minrow = wt_sum_row;
                     i_idx_minrow = dmt_row;
                 }
+            }
+
+            // calculate mean sum of dms of the other objects 
+            working_t wt_mean_sum_dm_others = wt_sum_dm_others / (2 * _maxr);
+            if (_dmoth[l] < 1.0) 
+            {
+                // replace current object with other only if dissmilarity of the other objects is small enough
+                if (wt_mean_sum_dm_others > (working_t)((float)wt_sum_minrow * _dmoth[l]))
+                    i_idx_minrow = _maxr; // do not replace
             }
 
             // set block of idx_minrow as output block
@@ -550,6 +566,9 @@ void TTempSmooth<pfclip, fp_template_param>::filter_mode2_3planes_C(PVideoFrame 
             working_t wt_sum_minrow = MaxSumDM;
             int i_idx_minrow = 0;
 
+            // for mean sum of rows except current
+            working_t wt_sum_dm_others = 0;
+
             for (int dmt_row = 0; dmt_row < (_maxr * 2 + 1); dmt_row++)
             {
                 working_t wt_sum_row = 0;
@@ -594,9 +613,13 @@ void TTempSmooth<pfclip, fp_template_param>::filter_mode2_3planes_C(PVideoFrame 
                         col_data2_ptr = (T*)&srcp2[dmt_col][x];
                     }
 
-                    wt_sum_row += (sizeof(T) <= 2) ? std::abs(*row_data0_ptr - *col_data0_ptr) : std::abs(*row_data0_ptr - *col_data0_ptr); // why std::abs equal now for all types ?
-                    wt_sum_row += (sizeof(T) <= 2) ? std::abs(*row_data1_ptr - *col_data1_ptr) : std::abs(*row_data1_ptr - *col_data1_ptr);
-                    wt_sum_row += (sizeof(T) <= 2) ? std::abs(*row_data2_ptr - *col_data2_ptr) : std::abs(*row_data2_ptr - *col_data2_ptr);
+                    working_t wt_dm = (sizeof(T) <= 2) ? std::abs(*row_data0_ptr - *col_data0_ptr) : std::abs(*row_data0_ptr - *col_data0_ptr); // why std::abs equal now for all types ?
+                    wt_dm += (sizeof(T) <= 2) ? std::abs(*row_data1_ptr - *col_data1_ptr) : std::abs(*row_data1_ptr - *col_data1_ptr);
+                    wt_dm += (sizeof(T) <= 2) ? std::abs(*row_data2_ptr - *col_data2_ptr) : std::abs(*row_data2_ptr - *col_data2_ptr);
+
+                    wt_sum_row += wt_dm;
+
+                    if((dmt_row != _maxr) && (dmt_col != _maxr)) wt_sum_dm_others += wt_dm;
                 }
 
                 if (wt_sum_row < wt_sum_minrow)
@@ -604,6 +627,15 @@ void TTempSmooth<pfclip, fp_template_param>::filter_mode2_3planes_C(PVideoFrame 
                     wt_sum_minrow = wt_sum_row;
                     i_idx_minrow = dmt_row;
                 }
+            }
+
+            // calculate mean sum of dms of the other objects 
+            working_t wt_mean_sum_dm_others = wt_sum_dm_others / (2 * _maxr);
+            if (_dmoth[0] < 1.0) // use only Y-thresh for combined planes mode
+            {
+                // replace current object with other only if dissmilarity of the other objects is small enough
+                if (wt_mean_sum_dm_others > (working_t)((float)wt_sum_minrow * _dmoth[0]))
+                    i_idx_minrow = _maxr; // do not replace
             }
 
             // set block of idx_minrow as output block
@@ -773,7 +805,7 @@ static float ComparePlane(PVideoFrame& src, PVideoFrame& src1, const int bits_pe
 template<bool pfclip, bool fp_template_param>
 TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff,
     int vmdiff, int strength, float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd,
-    int ypnew, int upnew, int vpnew, int threads, int radius_past, int radius_future, bool combine_planes, IScriptEnvironment* env)
+    int ypnew, int upnew, int vpnew, int threads, int radius_past, int radius_future, bool combine_planes, float ydmoth, float udmoth, float vdmoth,IScriptEnvironment* env)
     : GenericVideoFilter(_child),
       _maxr(radius_past == -1 ? maxr : radius_past),
       _scthresh(scthresh),
@@ -795,7 +827,8 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
       _thUPD{ythupd, uthupd, vthupd},
       _pnew{ypnew, upnew, vpnew},
       _threads{threads},
-      _combine_planes{combine_planes}
+      _combine_planes{combine_planes},
+      _dmoth{ydmoth, udmoth, vdmoth}
 {
     if (vi.IsRGB() || !vi.IsPlanar())
         env->ThrowError("vsTTempSmooth: clip must be Y/YUV(A) 8..32-bit planar format.");
@@ -887,6 +920,17 @@ TTempSmooth<pfclip, fp_template_param>::TTempSmooth(PClip _child, int maxr, int 
         if(vi.NumComponents() != 3)
             env->ThrowError("vsTTempSmooth: Number of planes must be 3 for combine_planes=true");
     }
+
+    if (ydmoth < 0.0f || ydmoth > 1.0f)
+        env->ThrowError("vsTTempSmooth: ydmoth must be between 0.0f and 1.0f");
+    if (udmoth < 0.0f || udmoth > 1.0f)
+        env->ThrowError("vsTTempSmooth: udmoth must be between 0.0f and 1.0f");
+    if (vdmoth < 0.0f || vdmoth > 1.0f)
+        env->ThrowError("vsTTempSmooth: vdmoth must be between 0.0f and 1.0f");
+
+    if ((ydmoth < 1.0f || udmoth < 1.0f || vdmoth < 1.0f) && opt != 0 )
+        env->ThrowError("vsTTempSmooth: dmoth control only supported with opt=0 in this version");
+
 
     const int planes[3]{y, u, v};
     static constexpr int iMaxSum{std::numeric_limits<int>::max()};
@@ -1350,7 +1394,10 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
         Threads,
         Radius_past,
         Radius_future,
-        Combine_planes
+        Combine_planes,
+        Ydmoth,
+        Udmoth,
+        Vdmoth
     };
 
     PClip pfclip{(args[Pfclip].Defined() ? args[Pfclip].AsClip() : nullptr)};
@@ -1364,14 +1411,16 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Scthresh].AsFloatf(12), args[Y].AsInt(3), args[U].AsInt(3), args[V].AsInt(3), pfclip, args[Opt].AsInt(-1),
                 args[Pmode].AsInt(0), args[YthUPD].AsInt(0), args[UthUPD].AsInt(0), args[VthUPD].AsInt(0), args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), args[Radius_past].AsInt(-1),
-                args[Radius_future].AsInt(-1), args[Combine_planes].AsBool(false), env);
+                args[Radius_future].AsInt(-1), args[Combine_planes].AsBool(false), args[Ydmoth].AsFloatf(1), args[Udmoth].AsFloatf(1), 
+                args[Vdmoth].AsFloatf(1), env);
         else
             return new TTempSmooth<true, false>(args[Clip].AsClip(), args[Maxr].AsInt(3), args[Ythresh].AsInt(4), args[Uthresh].AsInt(5),
                 args[Vthresh].AsInt(5), args[Ymdiff].AsInt(2), args[Umdiff].AsInt(3), args[Vmdiff].AsInt(3), args[Strength].AsInt(2),
                 args[Scthresh].AsFloatf(12), args[Y].AsInt(3), args[U].AsInt(3), args[V].AsInt(3), pfclip, args[Opt].AsInt(-1),
                 args[Pmode].AsInt(0), args[YthUPD].AsInt(0), args[UthUPD].AsInt(0), args[VthUPD].AsInt(0), args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), args[Radius_past].AsInt(-1),
-                args[Radius_future].AsInt(-1), args[Combine_planes].AsBool(false), env);
+                args[Radius_future].AsInt(-1), args[Combine_planes].AsBool(false), args[Ydmoth].AsFloatf(1), args[Udmoth].AsFloatf(1),
+                args[Vdmoth].AsFloatf(1), env);
     }
     else
     {
@@ -1381,14 +1430,16 @@ AVSValue __cdecl Create_TTempSmooth(AVSValue args, void* user_data, IScriptEnvir
                 args[Scthresh].AsFloatf(12), args[Y].AsInt(3), args[U].AsInt(3), args[V].AsInt(3), pfclip, args[Opt].AsInt(-1),
                 args[Pmode].AsInt(0), args[YthUPD].AsInt(0), args[UthUPD].AsInt(0), args[VthUPD].AsInt(0), args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), args[Radius_past].AsInt(-1),
-                args[Radius_future].AsInt(-1), args[Combine_planes].AsBool(false), env);
+                args[Radius_future].AsInt(-1), args[Combine_planes].AsBool(false), args[Ydmoth].AsFloatf(1), args[Udmoth].AsFloatf(1),
+                args[Vdmoth].AsFloatf(1), env);
         else
             return new TTempSmooth<false, false>(args[Clip].AsClip(), args[Maxr].AsInt(3), args[Ythresh].AsInt(4), args[Uthresh].AsInt(5),
                 args[Vthresh].AsInt(5), args[Ymdiff].AsInt(2), args[Umdiff].AsInt(3), args[Vmdiff].AsInt(3), args[Strength].AsInt(2),
                 args[Scthresh].AsFloatf(12), args[Y].AsInt(3), args[U].AsInt(3), args[V].AsInt(3), pfclip, args[Opt].AsInt(-1),
                 args[Pmode].AsInt(0), args[YthUPD].AsInt(0), args[UthUPD].AsInt(0), args[VthUPD].AsInt(0), args[Ypnew].AsInt(0),
                 args[Upnew].AsInt(0), args[Vpnew].AsInt(0), args[Threads].AsInt(1), args[Radius_past].AsInt(-1),
-                args[Radius_future].AsInt(-1), args[Combine_planes].AsBool(false), env);
+                args[Radius_future].AsInt(-1), args[Combine_planes].AsBool(false), args[Ydmoth].AsFloatf(1), args[Udmoth].AsFloatf(1),
+                args[Vdmoth].AsFloatf(1), env);
     }
 }
 
@@ -1401,7 +1452,7 @@ extern "C" __declspec(dllexport) const char* __stdcall AvisynthPluginInit3(IScri
     env->AddFunction("vsTTempSmooth",
         "c[maxr]i[ythresh]i[uthresh]i[vthresh]i[ymdiff]i[umdiff]i[vmdiff]i[strength]i[scthresh]f[fp]b[y]i[u]i[v]i[pfclip]c[opt]i[pmode]"
         "i["
-        "ythupd]i[uthupd]i[vthupd]i[ypnew]i[upnew]i[vpnew]i[threads]i[radius_past]i[radius_future]i[combine_planes]b",
+        "ythupd]i[uthupd]i[vthupd]i[ypnew]i[upnew]i[vpnew]i[threads]i[radius_past]i[radius_future]i[combine_planes]b[ydmoth]f[udmoth]f[vdmoth]f",
         Create_TTempSmooth, 0);
     return "vsTTempSmooth";
 }

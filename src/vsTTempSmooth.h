@@ -37,6 +37,7 @@ class TTempSmooth : public GenericVideoFilter
     int _pnew[3];
     int _threads;
     bool _combine_planes;
+    float _dmoth[3]; // dissimilarity of other objects only replacement policy thresholds
 
     template<typename T, bool useDiff>
     void filterI(
@@ -100,7 +101,8 @@ class TTempSmooth : public GenericVideoFilter
 public:
     TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength,
         float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew,
-        int vpnew, int threads, int radius_past, int radius_future, bool combine_planes, IScriptEnvironment* env);
+        int vpnew, int threads, int radius_past, int radius_future, bool combine_planes, float ydmoth, float udmoth, float vdmoth, 
+        IScriptEnvironment* env);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
     int __stdcall SetCacheHints(int cachehints, int frame_range) override
     {
