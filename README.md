@@ -15,7 +15,7 @@ This is [a port of the VapourSynth plugin TTempSmooth](https://github.com/HomeOf
 ```
 vsTTempSmooth(clip, int "ythresh", int "uthresh", int "vthresh", int "ymdiff", bool "umdiff" , bool "vmdiff", int "strength",
 float "scthresh", bool "fp", int "y", int "u", int "v", clip "pfclip", int "opt", int "pmode", int "ythupd", int "uthupd", int "vthupd",
-int "ypnew", int "upnew", int "vpnew", int "threads", int "radius_past", int "radius_future")
+int "ypnew", int "upnew", int "vpnew", int "threads", int "radius_past", int "radius_future", bool "combine_planes", float "Ydmoth", float "Udmoth", float "Vdmoth")
 ```
 
 ### Parameters:
@@ -173,6 +173,24 @@ int "ypnew", int "upnew", int "vpnew", int "threads", int "radius_past", int "ra
     Note: `pmode=1` and `pmode=2` do not support asymmetric radii and will return an error if these are used.
     Must be between 0 and 7. They cannot both be 0.
     Default: -1 (not specified).
+
+- combine_planes (only for 'pmode=1')
+    If true, the all 3 planes (Y+U+V) dissimilarity metric calculated and analysed at a single time<br>
+    This expected to process colour samples of an image as a 3 dimensional objects instead of separated processing as<br>
+    1 dimensional planes.
+    Default: false 
+
+- Ydmoth, Udmoth, Vdmoth (only for 'pmode=1')
+    Valid range from 1.0 to 0.0.
+    If set below 1.0 enables additional similarity analysis of the 'other' frames samples in maxr radius around current frame<br>
+    and disable replacement of the 'current' sample with selected 'best' from other frames if the similarity between 'other' <br>
+    frames is not enough.
+    The lower the value - the more similarity required from 'other' frames for replacement of 'current' frame sample with 'best' <br>
+    selected (works only if 'best' is not pointing to the 'current' frame practically). Expected to work as additional protection <br>
+    from replacing a possibly not very good 'current' sample with an even worse 'other' sample if there is not enough similarity between <br>
+    'others' exist. For combine_planes=true only Ydmoth is used.    
+    Default: 1.0 (disabled) 
+
 
 ### Building:
 

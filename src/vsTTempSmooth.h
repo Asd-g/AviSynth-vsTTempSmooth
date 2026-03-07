@@ -36,6 +36,8 @@ class TTempSmooth : public GenericVideoFilter
     std::array<std::vector<std::variant<int, float>>, 3> pMinSumMem;
     int _pnew[3];
     int _threads;
+    bool _combine_planes;
+    float _dmoth[3]; // dissimilarity of other objects only replacement policy thresholds
 
     template<typename T, bool useDiff>
     void filterI(
@@ -71,6 +73,10 @@ class TTempSmooth : public GenericVideoFilter
     void filter_mode2_C(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst,
         const int fromFrame, const int toFrame, const int plane);
     template<typename T>
+    void filter_mode2_3planes_C(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst,
+        const int fromFrame, const int toFrame);
+
+    template<typename T>
     void filterI_mode2_avx2(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame& dst,
         const int fromFrame, const int toFrame, const int plane);
 
@@ -82,6 +88,9 @@ class TTempSmooth : public GenericVideoFilter
     void (TTempSmooth::*filter_mode2_fn_ptr)(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)],
         PVideoFrame& dst, const int fromFrame, const int toFrame, const int plane);
 
+    void (TTempSmooth::*filter_mode2_3planes_fn_ptr)(PVideoFrame src[(MAX_TEMP_RAD * 2 + 1)], PVideoFrame pf[(MAX_TEMP_RAD * 2 + 1)],
+        PVideoFrame& dst, const int fromFrame, const int toFrame);
+
 #ifdef _DEBUG
     // MEL debug stat
     int iMEL_non_current_samples;
@@ -92,7 +101,8 @@ class TTempSmooth : public GenericVideoFilter
 public:
     TTempSmooth(PClip _child, int maxr, int ythresh, int uthresh, int vthresh, int ymdiff, int umdiff, int vmdiff, int strength,
         float scthresh, int y, int u, int v, PClip pfclip_, int opt, int pmode, int ythupd, int uthupd, int vthupd, int ypnew, int upnew,
-        int vpnew, int threads, int radius_past, int radius_future, IScriptEnvironment* env);
+        int vpnew, int threads, int radius_past, int radius_future, bool combine_planes, float ydmoth, float udmoth, float vdmoth, 
+        IScriptEnvironment* env);
     PVideoFrame __stdcall GetFrame(int n, IScriptEnvironment* env) override;
     int __stdcall SetCacheHints(int cachehints, int frame_range) override
     {
